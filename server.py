@@ -4,6 +4,7 @@ import cherrypy
 import dist_test
 import logging
 from jinja2 import Template
+import simplejson
 
 class DistTestServer(object):
   def __init__(self):
@@ -29,10 +30,23 @@ class DistTestServer(object):
     if type(tasks) != list:
       tasks = [tasks]
     for isolate_hash in tasks:
-      task = dist_test.Task.create(job_id, isolate_hash)
+      task = dist_test.Task.create(job_id, isolate_hash, "")
       self.results_store.register_task(task)
       self.task_queue.submit_task(task)
+    return {"status": "SUCCESS"}
 
+
+  @cherrypy.expose
+  @cherrypy.tools.json_out()
+  def submit_job(self, job_id, job_json):
+    job_desc = simplejson.loads(job_json)
+
+    for task_desc in job_desc['tasks']:
+      task = dist_test.Task.create(job_id,
+                                   task_desc['isolate_hash'],
+                                   task_desc.get('description', ''))
+      self.results_store.register_task(task)
+      self.task_queue.submit_task(task)
     return {"status": "SUCCESS"}
 
   @cherrypy.expose
@@ -47,6 +61,12 @@ class DistTestServer(object):
     return result
 
   def _render_tasks(self, tasks):
+    for t in tasks:
+      if t['stdout_abbrev']:
+        t['stdout_link'] = self.results_store.generate_output_link(t, "stdout")
+      if t['stderr_abbrev']:
+        t['stderr_link'] = self.results_store.generate_output_link(t, "stderr")
+
     template = Template("""
     <table class="table">
       <tr>
@@ -54,6 +74,7 @@ class DistTestServer(object):
         <th>complete time</th>
         <th>job</th>
         <th>task</th>
+        <th>description</th>
         <th>status</th>
         <th>stdout</th>
         <th>stderr</th>
@@ -70,9 +91,18 @@ class DistTestServer(object):
           <td>{{ task.complete_timestamp |e }}</td>
           <td>{{ task.job_id |e }}</td>
           <td>{{ task.task_id |e }}</td>
+          <td>{{ task.description |e }}</td>
           <td>{{ task.status |e }}</td>
-          <td>{{ task.stdout_abbrev |e }}</td>
-          <td>{{ task.stderr_abbrev |e }}</td>
+          <td>{{ task.stdout_abbrev |e }}
+              {% if task.stdout_link %}
+              <a href="{{ task.stdout_link |e }}">download</a>
+              {% endif %}
+          </td>
+          <td>{{ task.stderr_abbrev |e }}
+              {% if task.stderr_link %}
+              <a href="{{ task.stderr_link |e }}">download</a>
+              {% endif %}
+          </td>
         </tr>
       {% endfor %}
     </table>
