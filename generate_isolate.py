@@ -27,19 +27,19 @@ run_test_cmd = "run_junit"
 lib_folder = "lib/"
 files = [lib_folder, run_test_cmd] + jar_folders
 
-# Make the isolate files
+# Write the isolate file
 
+junit_cmd = """%s -cp "%s" -Dorg.schmant.task.junit4.target=junit_report.xml barrypitman.junitXmlFormatter.Runner <(TESTCLASS)""" % (run_test_cmd, classpath)
+
+isolate = {
+    'variables': {
+        'command': junit_cmd.split(" "),
+        'files': files,
+    },
+}
+
+with open("hadoop.isolate", "wt") as out:
+    pprint.pprint(isolate, stream=out)
+
+# Write the per-test json files for batching
 for test_class in tests:
-    output_fn = output_root + "/" + test_class + ".isolate"
-
-    junit_cmd = """%s -cp "%s" -Dorg.schmant.task.junit4.target=junit_report.xml barrypitman.junitXmlFormatter.Runner %s""" % (run_test_cmd, classpath, test_class)
-
-    isolate = {
-        'variables': {
-            'command': junit_cmd.split(" "),
-            'files': files,
-        },
-    }
-
-    with open(output_fn, 'wt') as out:
-        pprint.pprint(isolate, stream=out)

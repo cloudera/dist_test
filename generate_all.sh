@@ -8,10 +8,15 @@ if [ "$#" -ne 2 ]; then
     exit 1
 fi
 
-tmpfile=$(mktemp)
-
-echo "Enumerating test cases..."
-enumerate_tests $1 $tmpfile
+tmpdir=$(mktemp -d)
+tmpfile=$tmpdir/tests
 
 cd $DIR
-./generate_isolate.py $1/hadoop-dist $2 $tmpfile
+
+ln -s $1 .
+base=`basename $1`
+
+exit
+
+enumerate_tests $1 $tmpfile
+./generate_isolate.py $base/hadoop-dist $2 $tmpfile
