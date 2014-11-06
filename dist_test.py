@@ -156,6 +156,7 @@ class ResultsStore(object):
         description varchar(100) not null,
         submit_timestamp timestamp not null default current_timestamp,
         complete_timestamp timestamp,
+        output_archive_hash char(40),
         stdout_abbrev varchar(100),
         stderr_abbrev varchar(100),
         status int,
@@ -168,7 +169,7 @@ class ResultsStore(object):
       INSERT INTO dist_test_tasks(job_id, task_id, description) VALUES (%s, %s, %s)
     """, [task.job_id, task.task_id, task.description])
 
-  def mark_task_finished(self, task, result_code, stdout, stderr):
+  def mark_task_finished(self, task, result_code, stdout, stderr, output_archive_hash):
     fn = "%s.stdout" % task.task_id
     self._upload_to_s3(fn, stdout, fn)
     logging.info("Uploaded stdout for %s to S3" % task.task_id)
@@ -179,6 +180,7 @@ class ResultsStore(object):
     parms = dict(result_code=result_code,
                  job_id=task.job_id,
                  task_id=task.task_id,
+                 output_archive_hash=output_archive_hash,
                  stdout_abbrev=stdout[0:100],
                  stderr_abbrev=stderr[0:100])
     logging.info("parms: %s", repr(parms))
@@ -187,6 +189,7 @@ class ResultsStore(object):
         status = %(result_code)s,
         stdout_abbrev = %(stdout_abbrev)s,
         stderr_abbrev = %(stderr_abbrev)s,
+        output_archive_hash = %(output_archive_hash)s,
         complete_timestamp = now()
       WHERE task_id = %(task_id)s""", parms)
 

@@ -1,11 +1,15 @@
 #!/usr/bin/env python
 
 import beanstalkc
+import boto
 import dist_test
 import logging
 import os
+import re
 import simplejson
 import subprocess
+
+RUN_ISOLATED_OUT_RE = re.compile(r'\[run_isolated_out_hack\](.+?)\[/run_isolated_out_hack\]')
 
 class Slave(object):
   def __init__(self):
@@ -23,9 +27,15 @@ class Slave(object):
     p = subprocess.Popen(
       cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = p.communicate()
-    logging.info("out: %s", stdout)
-    logging.info("err: %s", stderr)
+
+    output_archive_hash = None
+    m = RUN_ISOLATED_OUT_RE.search(stdout)
+    if m:
+      isolated_out = simplejson.loads(m.group(1))
+      output_archive_hash = isolated_out['hash']
+
     self.results_store.mark_task_finished(task.task,
+                                          output_archive_hash=output_archive_hash,
                                           result_code=p.wait(),
                                           stdout=stdout,
                                           stderr=stderr)

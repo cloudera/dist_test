@@ -76,6 +76,7 @@ class DistTestServer(object):
         <th>task</th>
         <th>description</th>
         <th>status</th>
+        <th>results archive</th>
         <th>stdout</th>
         <th>stderr</th>
       </tr>
@@ -93,6 +94,7 @@ class DistTestServer(object):
           <td>{{ task.task_id |e }}</td>
           <td>{{ task.description |e }}</td>
           <td>{{ task.status |e }}</td>
+          <td>{{ task.output_archive_hash |e }}</td>
           <td>{{ task.stdout_abbrev |e }}
               {% if task.stdout_link %}
               <a href="{{ task.stdout_link |e }}">download</a>
