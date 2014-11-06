@@ -2,13 +2,13 @@
 
 import os, sys
 import subprocess
+import pprint
 
 if len(sys.argv) != 2:
-    print sys.argv[0], "<project dist root>"
+    print sys.argv[0], "<dist root>"
     sys.exit(1)
 
 dist_root = sys.argv[1]
-print "Using project dist root", dist_root
 
 # Find folders with jars and add to the classpath
 cmd="""find %s -name *.jar | sed "s|[^/]*.jar||" | sort -u""" % (dist_root)
@@ -17,7 +17,8 @@ cmd="""find %s -name *.jar | sed "s|[^/]*.jar||" | sort -u""" % (dist_root)
 
 jar_folders = subprocess.check_output(cmd, shell=True).split("\n")[:-1]
 
-print jar_folders
+#for x in jar_folders:
+#    print x,
 
 junit_cmd = "java -cp PRODU"
 
@@ -32,4 +33,4 @@ isolate = {
     },
 }
 
-print isolate
+pprint.pprint(isolate)
