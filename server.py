@@ -14,14 +14,21 @@ class DistTestServer(object):
 
   @cherrypy.expose
   def index(self):
+    stats = self.task_queue.stats()
+    body = "<h1>Stats</h1>\n" + self._render_stats(stats)
     recent_tasks = self.results_store.fetch_recent_task_rows()
-    body = "<h1>Recent tasks</h1>\n" + self._render_tasks(recent_tasks)
+    body += "<h1>Recent tasks</h1>\n" + self._render_tasks(recent_tasks)
     return self.render_container(body)
 
   @cherrypy.expose
   def job(self, job_id):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
-    body = "<h1>Job</h1>\n" + self._render_tasks(tasks)
+    job_summary = self._summarize_tasks(tasks)
+    progress_percent = job_summary['finished_tasks'] * 100 / float(job_summary['total_tasks'])
+    body = "<h1>Job</h1>\n"
+    body += '<div class="progress-bar"><div class="filler" style="width: %d%%;"></div></div>' % (
+      int(progress_percent))
+    body += self._render_tasks(tasks)
     return self.render_container(body)
 
   @cherrypy.expose
@@ -53,12 +60,25 @@ class DistTestServer(object):
   @cherrypy.tools.json_out()
   def job_status(self, job_id):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
+    job_summary = self._summarize_tasks(tasks)
+    return job_summary
+
+  def _summarize_tasks(self, tasks):
     result = {}
     result['total_tasks'] = len(tasks)
     result['finished_tasks'] = len([1 for t in tasks if t['status'] is not None])
     result['failed_tasks'] = len([1 for t in tasks if t['status'] is not None and t['status'] != 0])
     result['succeeded_tasks'] = len([1 for t in tasks if t['status'] == 0])
     return result
+
+  def _render_stats(self, stats):
+    template = Template("""
+      <code>
+        Queue length: {{ stats['current-jobs-ready'] }}
+        Running: {{ stats['current-jobs-reserved'] }}
+        Idle slaves: {{ stats['current-waiting'] }}
+      </code>""")
+    return template.render(stats=stats)
 
   def _render_tasks(self, tasks):
     for t in tasks:
@@ -68,7 +88,13 @@ class DistTestServer(object):
         t['stderr_link'] = self.results_store.generate_output_link(t, "stderr")
 
     template = Template("""
-    <table class="table">
+      <script>
+$(document).ready(function() {
+    $('table.sortable').tablesorter();
+} );
+</script>
+    <table class="table sortable">
+    <thead>
       <tr>
         <th>submit time</th>
         <th>complete time</th>
@@ -80,6 +106,7 @@ class DistTestServer(object):
         <th>stdout</th>
         <th>stderr</th>
       </tr>
+    </thead>
       {% for task in tasks %}
         <tr {% if task.status is none %}
               style="background-color: #ffa;"
@@ -90,7 +117,7 @@ class DistTestServer(object):
             {% endif %}>
           <td>{{ task.submit_timestamp |e }}</td>
           <td>{{ task.complete_timestamp |e }}</td>
-          <td>{{ task.job_id |e }}</td>
+          <td><a href="/job?job_id={{ task.job_id |urlencode }}">{{ task.job_id |e }}</a></td>
           <td>{{ task.task_id |e }}</td>
           <td>{{ task.description |e }}</td>
           <td>{{ task.status |e }}</td>
@@ -119,12 +146,27 @@ class DistTestServer(object):
       <head><title>Distributed Test Server</title>
       <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css" />
       <style>
-        .new-date { border-bottom: 2px solid #666; }
+        .progress-bar {
+          border: 1px solid #666;
+          background: #eee;
+          height: 30px;
+          width: 80%;
+          margin: auto;
+          padding: 0;
+          margin-bottom: 1em;
+        }
+        .progress-bar .filler {
+           background-color: #0f0;
+           margin: 0px;
+           height: 100%;
+           border: 0;
+        }
       </style>
     </head>
     <body>
       <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
       <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+      <script src="//cdnjs.cloudflare.com/ajax/libs/jquery.tablesorter/2.18.2/js/jquery.tablesorter.min.js"></script>
       <div class="container-fluid">
       {{ body }}
       </div>

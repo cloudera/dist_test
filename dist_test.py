@@ -99,6 +99,8 @@ class TaskQueue(object):
     bs_elem = self.bs.reserve()
     return ReservedTask(bs_elem)
 
+  def stats(self):
+    return self.bs.stats_tube("default")
 
 class ResultsStore(object):
   def __init__(self, config):
