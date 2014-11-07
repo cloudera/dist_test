@@ -20,6 +20,6 @@ cp -r $DIR/skeleton/* .
 base=`basename $1`
 ln -s $1 $base
 
-#enumerate_tests $1 $tmpfile
+enumerate_tests $1 $tmpfile
 touch $tmpfile
 $DIR/generate_isolate.py $tmpdir $base/hadoop-dist $tmpdir $tmpfile

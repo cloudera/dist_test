@@ -33,7 +33,7 @@ files = [run_test_cmd] + jar_folders
 
 # Write the isolate file, parameterized test case
 
-junit_cmd = """%s -cp "%s" -Dorg.schmant.task.junit4.target=junit_report.xml barrypitman.junitXmlFormatter.Runner <(TESTCLASS)""" % (run_test_cmd, classpath)
+junit_cmd = """%s -cp %s -Dorg.schmant.task.junit4.target=junit_report.xml -Dtest.build.data=./build barrypitman.junitXmlFormatter.Runner <(TESTCLASS)""" % (run_test_cmd, classpath)
 
 isolate = {
     'variables': {
@@ -51,7 +51,7 @@ for test_class in tests:
     gen = {
         "version" : 1,
         "dir" : output_root,
-        "args" : ["-i", "hadoop.isolate", "-s", "hadoop.isolated", "--extra-variable", "TESTCLASS=%s" % test_class]
+        "args" : ["-i", "hadoop.isolate", "-s", test_class + ".isolated", "--extra-variable", "TESTCLASS=%s" % test_class]
     }
     with open(filename, "wt") as out:
         json.dump(gen, out)
