@@ -1,6 +1,29 @@
 #!/bin/bash
 
 source /opt/toolchain/toolchain.sh
-java "$@"
 
-cat junit_report.xml
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Extract all the jars into "classes" and "test-classes"
+for t in `find . -name "target" -type d`; do
+    pushd $t
+    mkdir classes test-classes
+    for j in `ls *.jar`; do
+        case "$j" in
+            *-test-sources.jar | *-tests.jar)
+                pushd test-classes
+                yes | unzip -qq ../$j
+                popd
+            ;;
+            *)
+            ;;
+        esac
+    done
+    popd
+done
+
+junit_out=junit_report.xml
+
+java -Xmx1024m -Dtest.build.data=$DIR/build/test/data -Dorg.schmant.task.junit4.target=$junit_out "$@"
+
+cat $junit_out

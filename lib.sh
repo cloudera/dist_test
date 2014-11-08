@@ -37,8 +37,7 @@ function main () {
     base=`basename $1`
     ln -s $1 source_repo
 
-    #enumerate_tests $1 $tmpfile
-    echo org.apache.hadoop.fs.TestTest > $tmpfile
-    touch $tmpfile
+    enumerate_tests $1 $tmpfile
+    #echo org.apache.hadoop.hdfs.server.namenode.TestLeaseManager > $tmpfile
     $DIR/generate_isolate.py $tmpdir source_repo $tmpfile
 }
