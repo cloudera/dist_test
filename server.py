@@ -24,10 +24,15 @@ class DistTestServer(object):
   def job(self, job_id):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
     job_summary = self._summarize_tasks(tasks)
-    progress_percent = job_summary['finished_tasks'] * 100 / float(job_summary['total_tasks'])
+    success_percent = job_summary['succeeded_tasks'] * 100 / float(job_summary['total_tasks'])
+    fail_percent = job_summary['failed_tasks'] * 100 / float(job_summary['total_tasks'])
     body = "<h1>Job</h1>\n"
-    body += '<div class="progress-bar"><div class="filler" style="width: %d%%;"></div></div>' % (
-      int(progress_percent))
+    body += """
+    <div class="progress-bar">
+      <div class="filler green" style="width: %.2f%%;"></div>
+      <div class="filler red" style="width: %.2f%%;"></div>
+    </div>""" % (
+      success_percent, fail_percent)
     body += self._render_tasks(tasks)
     return self.render_container(body)
 
@@ -156,11 +161,13 @@ $(document).ready(function() {
           margin-bottom: 1em;
         }
         .progress-bar .filler {
-           background-color: #0f0;
            margin: 0px;
            height: 100%;
            border: 0;
+           float:left;
         }
+        .filler.green { background-color: #0f0; }
+        .filler.red { background-color: #f00; }
       </style>
     </head>
     <body>
