@@ -176,7 +176,7 @@ def main():
 
     logging.info("Success! Generated isolate descriptions in %s", base_dir)
 
-    print "%s/*.gen.isolated" % base_dir
+    print "%s/*.json" % base_dir
 
 if __name__ == "__main__":
     main()
