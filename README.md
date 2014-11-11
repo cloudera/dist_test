@@ -61,4 +61,6 @@ Example usage
 Tips and tricks
 ---------------
 
+If you want to run a single test to get started, check out the `isolate archive` command. It doesn't generate a hashes file, so you'll need to make your own json file suitable for usage with `submit.py`.
+
 Setting SWARMING_PROFILE=1 enables profiling for swarming, might help us find bottlenecks to optimize.
