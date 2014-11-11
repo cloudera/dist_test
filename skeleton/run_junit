@@ -4,15 +4,16 @@ source /opt/toolchain/toolchain.sh
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Extract all the jars into "classes" and "test-classes"
+# Extract test jars to the local filesystem, this is expected by some tests
 for t in `find . -name "target" -type d`; do
     pushd $t
-    mkdir classes test-classes
+    mkdir test-classes
     for j in `ls *.jar`; do
         case "$j" in
             *-test-sources.jar | *-tests.jar)
                 pushd test-classes
-                yes | unzip -qq ../$j
+                # Make unzip very quiet (-qq), and default to not overwrite existing files (-n)
+                unzip -qq -n ../$j
                 popd
             ;;
             *)
