@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Make toolchain choose the Java8 JDK instead of earlier versions.
+export JAVA8_BUILD=1
 source /opt/toolchain/toolchain.sh
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
