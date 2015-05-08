@@ -27,7 +27,7 @@ function enumerate_tests () {
     # Determine its package, concat with the basename of the file.
     for x in $tests; do
         classname=`basename $x | cut -d "." -f 1`
-        prefix=`grep package $x | cut -d " " -f 2 | cut -d ";" -f 1`
+        prefix=`grep '^package ' $x | head -1 | cut -d " " -f 2 | cut -d ";" -f 1`
         full=`echo ${prefix}.${classname}`
         echo $full >> $OUTPUT_PATH
     done
