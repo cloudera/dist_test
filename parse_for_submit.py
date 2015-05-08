@@ -17,7 +17,7 @@ outmap = {
 tasks = []
 
 inmap = json.load(open(sys.argv[1], "r"))
-for k,v in inmap.iteritems():
+for k,v in inmap['items'].iteritems():
     tasks += [{"isolate_hash" : str(v),
               "description" : str(k),
              }]
