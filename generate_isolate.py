@@ -169,7 +169,8 @@ def main():
         gen = {
             "version" : 1,
             "dir" : base_dir,
-            "args" : ["-i", "hadoop.isolate", "-s", test_class + ".isolated", "--extra-variable", "TESTCLASS=%s" % test_class]
+            "args" : ["-i", "hadoop.isolate", "-s", test_class + ".isolated", "--extra-variable", "TESTCLASS=%s" % test_class],
+            "name" : test_class
         }
         with open(filename, "wt") as out:
             json.dump(gen, out)
