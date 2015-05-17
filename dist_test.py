@@ -73,13 +73,15 @@ class Task(object):
     self.task_id = d['task_id']
     self.isolate_hash = d['isolate_hash']
     self.description = d['description']
+    self.timeout = d.get('timeout', 0)
 
   def to_json(self):
     job_struct = dict(
       job_id=self.job_id,
       task_id=self.task_id,
       isolate_hash=self.isolate_hash,
-      description=self.description)
+      description=self.description,
+      timeout=self.timeout)
     return simplejson.dumps(job_struct)
 
 class ReservedTask(object):

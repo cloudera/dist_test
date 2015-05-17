@@ -42,7 +42,9 @@ class Slave(object):
     stdout = ""
     stderr = ""
 
+    timeout = task.task.timeout
     last_touch = time.time()
+    start_time = last_touch
     while True:
       rlist, wlist, xlist = select.select(pipes, [], pipes, 2)
       if p.stdout in rlist:
@@ -52,6 +54,11 @@ class Slave(object):
         stderr += p.stderr.read(1024 * 1024)
       if xlist or p.poll() is not None:
         break
+      now = time.time()
+      if timeout > 0 and now > start_time + timeout:
+        logging.info("Task timed out: " + task.task.description)
+        stderr += "\n------\nKilling task after %d seconds" % timeout
+        p.kill()
       if time.time() - last_touch > 10:
         logging.info("Still running: " + task.task.description)
         try:
