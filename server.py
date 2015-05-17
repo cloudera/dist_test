@@ -54,9 +54,9 @@ class DistTestServer(object):
     job_desc = simplejson.loads(job_json)
 
     for task_desc in job_desc['tasks']:
-      task = dist_test.Task.create(job_id,
-                                   task_desc['isolate_hash'],
-                                   task_desc.get('description', ''))
+      task_desc['job_id'] = job_id
+      task_desc['task_id'] = task_desc['isolate_hash']
+      task = dist_test.Task(task_desc)
       self.results_store.register_task(task)
       self.task_queue.submit_task(task)
     return {"status": "SUCCESS"}
@@ -106,6 +106,7 @@ $(document).ready(function() {
         <th>job</th>
         <th>task</th>
         <th>description</th>
+        <th>hostname</th>
         <th>status</th>
         <th>results archive</th>
         <th>stdout</th>
@@ -125,6 +126,7 @@ $(document).ready(function() {
           <td><a href="/job?job_id={{ task.job_id |urlencode }}">{{ task.job_id |e }}</a></td>
           <td>{{ task.task_id |e }}</td>
           <td>{{ task.description |e }}</td>
+          <td>{{ task.hostname |e }}</td>
           <td>{{ task.status |e }}</td>
           <td>{{ task.output_archive_hash |e }}</td>
           <td>{{ task.stdout_abbrev |e }}

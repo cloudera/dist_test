@@ -6,6 +6,7 @@ import MySQLdb
 import os
 import uuid
 import simplejson
+import socket
 import threading
 
 class Config(object):
@@ -159,6 +160,8 @@ class ResultsStore(object):
         task_id varchar(100) not null,
         description varchar(100) not null,
         submit_timestamp timestamp not null default current_timestamp,
+        start_timestamp timestamp,
+        hostname varchar(100),
         complete_timestamp timestamp,
         output_archive_hash char(40),
         stdout_abbrev varchar(100),
@@ -172,6 +175,17 @@ class ResultsStore(object):
     self._execute_query("""
       INSERT INTO dist_test_tasks(job_id, task_id, description) VALUES (%s, %s, %s)
     """, [task.job_id, task.task_id, task.description])
+
+  def mark_task_running(self, task):
+    parms = dict(job_id=task.job_id,
+                 task_id=task.task_id,
+                 hostname=socket.gethostname())
+    self._execute_query("""
+      UPDATE dist_test_tasks SET
+        start_timestamp=now(),
+        hostname=%(hostname)s
+      WHERE task_id = %(task_id)s""", parms)
+
 
   def mark_task_finished(self, task, result_code, stdout, stderr, output_archive_hash):
     fn = "%s.stdout" % task.task_id

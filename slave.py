@@ -32,7 +32,7 @@ class Slave(object):
            "--verbose",
            "--hash", task.task.isolate_hash]
     logging.info("Running command: %s", repr(cmd))
-
+    self.results_store.mark_task_running(task.task)
     p = subprocess.Popen(
       cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     pipes = [p.stdout, p.stderr]
