@@ -24,8 +24,12 @@ class DistTestServer(object):
   def job(self, job_id):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
     job_summary = self._summarize_tasks(tasks)
-    success_percent = job_summary['succeeded_tasks'] * 100 / float(job_summary['total_tasks'])
-    fail_percent = job_summary['failed_tasks'] * 100 / float(job_summary['total_tasks'])
+    if job_summary['total_tasks'] > 0:
+      success_percent = job_summary['succeeded_tasks'] * 100 / float(job_summary['total_tasks'])
+      fail_percent = job_summary['failed_tasks'] * 100 / float(job_summary['total_tasks'])
+    else:
+      success_percent = 0
+      fail_percent = 0
     body = "<h1>Job</h1>\n"
     body += """
     <div class="progress-bar">
