@@ -118,7 +118,7 @@ class ResultsStore(object):
 
     logging.info("Connected to S3 with access key %s" % self.config.AWS_ACCESS_KEY)
 
-  def _execute_query(self, query, *args):
+  def _execute_query(self, query, *args, **kwargs):
     """ Execute a query, automatically reconnecting on disconnection. """
     # We'll try up to 3 times to reconnect
     MAX_ATTEMPTS = 3
@@ -131,7 +131,10 @@ class ResultsStore(object):
       c = self._connect_mysql().cursor(MySQLdb.cursors.DictCursor)
       attempt_num = attempt_num + 1
       try:
-        c.execute(query, *args)
+        if kwargs.get('use_executemany', False):
+          c.executemany(query, *args)
+        else:
+          c.execute(query, *args)
         return c
       except MySQLdb.OperationalError as err:
         if err.args[0] == MYSQL_SERVER_GONE_AWAY and attempt_num < MAX_ATTEMPTS:
@@ -175,6 +178,14 @@ class ResultsStore(object):
     self._execute_query("""
       INSERT INTO dist_test_tasks(job_id, task_id, description) VALUES (%s, %s, %s)
     """, [task.job_id, task.task_id, task.description])
+  
+  def register_tasks(self, tasks):
+    tuples = []
+    for task in tasks:
+      tuples.append((task.job_id, task.task_id, task.description))
+    self._execute_query("""
+      INSERT INTO dist_test_tasks(job_id, task_id, description) VALUES (%s, %s, %s)
+      """, tuples, use_executemany=True)
 
   def mark_task_running(self, task):
     parms = dict(job_id=task.job_id,

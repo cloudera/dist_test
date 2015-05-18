@@ -53,11 +53,15 @@ class DistTestServer(object):
   def submit_job(self, job_id, job_json):
     job_desc = simplejson.loads(job_json)
 
+    tasks = []
     for task_desc in job_desc['tasks']:
       task_desc['job_id'] = job_id
       task_desc['task_id'] = task_desc['isolate_hash']
       task = dist_test.Task(task_desc)
-      self.results_store.register_task(task)
+      tasks.append(task)
+
+    self.results_store.register_tasks(tasks)
+    for task in tasks:
       self.task_queue.submit_task(task)
     return {"status": "SUCCESS"}
 
