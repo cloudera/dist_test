@@ -220,7 +220,7 @@ class ResultsStore(object):
         stderr_abbrev = %(stderr_abbrev)s,
         output_archive_hash = %(output_archive_hash)s,
         complete_timestamp = now()
-      WHERE task_id = %(task_id)s""", parms)
+      WHERE job_id = %(job_id)s AND task_id = %(task_id)s""", parms)
 
   def generate_output_link(self, task_row, output):
     expiry = 60 * 60 * 24 # link should last 1 day
