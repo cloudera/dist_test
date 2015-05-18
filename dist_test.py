@@ -195,7 +195,7 @@ class ResultsStore(object):
       UPDATE dist_test_tasks SET
         start_timestamp=now(),
         hostname=%(hostname)s
-      WHERE task_id = %(task_id)s""", parms)
+      WHERE job_id = %(job_id)s AND task_id = %(task_id)s""", parms)
 
 
   def mark_task_finished(self, task, result_code, stdout, stderr, output_archive_hash):
