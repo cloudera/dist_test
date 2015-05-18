@@ -110,6 +110,7 @@ $(document).ready(function() {
     <thead>
       <tr>
         <th>submit time</th>
+        <th>start time</th>
         <th>complete time</th>
         <th>job</th>
         <th>task</th>
@@ -130,6 +131,7 @@ $(document).ready(function() {
               style="background-color: #faa;"
             {% endif %}>
           <td>{{ task.submit_timestamp |e }}</td>
+          <td>{{ task.start_timestamp |e }}</td>
           <td>{{ task.complete_timestamp |e }}</td>
           <td><a href="/job?job_id={{ task.job_id |urlencode }}">{{ task.job_id |e }}</a></td>
           <td>{{ task.task_id |e }}</td>
