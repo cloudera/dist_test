@@ -103,10 +103,32 @@ class DistTestServer(object):
     template = Template("""
       <script>
 $(document).ready(function() {
-    $('table.sortable').tablesorter();
+  function showOnly(clazz) {
+    $('#tasks tbody tr:not(.' + clazz + ')').hide();
+    $('#tasks tbody tr.' + clazz).show();
+    return false;
+  }
+  function showAll() {
+    $('#tasks tbody tr').show();
+    return false;
+  }
+
+  $('table.sortable').tablesorter();
+  $('#show-all').click(function() { showAll(); });
+  $('#show-running').click(function() { showOnly('task-running'); });
+  $('#show-successful').click(function() { showOnly('task-successful'); });
+  $('#show-failed').click(function() { showOnly('task-failed'); });
 } );
 </script>
-    <table class="table sortable">
+    <br style="clear: both;"/>
+    <div>
+      Show:
+      <a id="show-all">all</a> |
+      <a id="show-running">running</a> |
+      <a id="show-failed">failed</a> |
+      <a id="show-successful">successful</a>
+    </div>
+    <table class="table sortable" id="tasks">
     <thead>
       <tr>
         <th>submit time</th>
@@ -122,13 +144,14 @@ $(document).ready(function() {
         <th>stderr</th>
       </tr>
     </thead>
+    <tbody>
       {% for task in tasks %}
         <tr {% if task.status is none %}
-              style="background-color: #ffa;"
+              class="task-running"
             {% elif task.status == 0 %}
-              style="background-color: #afa;"
+              class="task-successful"
             {% else %}
-              style="background-color: #faa;"
+              class="task-failed"
             {% endif %}>
           <td>{{ task.submit_timestamp |e }}</td>
           <td>{{ task.start_timestamp |e }}</td>
@@ -151,6 +174,7 @@ $(document).ready(function() {
           </td>
         </tr>
       {% endfor %}
+      </tbody>
     </table>
     """)
     return template.render(tasks=tasks)
@@ -179,6 +203,9 @@ $(document).ready(function() {
            float:left;
         }
         .filler.green { background-color: #0f0; }
+        .task-running { background-color: #ffa; }
+        .task-successful { background-color: #afa; }
+        .task-failed { background-color: #faa; }
         .filler.red { background-color: #f00; }
       </style>
     </head>
