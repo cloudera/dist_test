@@ -58,9 +58,9 @@ class DistTestServer(object):
     job_desc = simplejson.loads(job_json)
 
     tasks = []
-    for task_desc in job_desc['tasks']:
+    for i, task_desc in enumerate(job_desc['tasks']):
       task_desc['job_id'] = job_id
-      task_desc['task_id'] = task_desc['isolate_hash']
+      task_desc['task_id'] = "%s.%d" % (task_desc['isolate_hash'], i)
       task = dist_test.Task(task_desc)
       tasks.append(task)
 
@@ -75,6 +75,22 @@ class DistTestServer(object):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
     job_summary = self._summarize_tasks(tasks)
     return job_summary
+
+  @cherrypy.expose
+  @cherrypy.tools.json_out()
+  def failed_tasks(self, job_id):
+    tasks = self.results_store.fetch_task_rows_for_job(job_id)
+    ret = []
+    for t in tasks:
+      if t['status'] is not None and t['status'] != 0:
+        record = dict(task_id=t['task_id'],
+                      description=t['description'])
+        if t['stdout_abbrev']:
+          record['stdout_link'] = self.results_store.generate_output_link(t, "stdout")
+        if t['stderr_abbrev']:
+          record['stderr_link'] = self.results_store.generate_output_link(t, "stderr")
+        ret.append(record)
+    return ret
 
   def _summarize_tasks(self, tasks):
     result = {}
