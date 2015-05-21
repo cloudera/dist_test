@@ -30,7 +30,7 @@ class Slave(object):
       dir = "%s.%d" % (self.config.ISOLATE_CACHE_DIR, i)
       if not os.path.isdir(dir):
         os.makedirs(dir)
-      self._lockfile = file(os.path.join(dir, "lock"), "w")
+      self._lockfile = file(dir + ".lock"), "w")
       try:
         fcntl.lockf(self._lockfile.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
       except IOError, e:
