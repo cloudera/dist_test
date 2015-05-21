@@ -5,7 +5,10 @@ import logging
 import MySQLdb
 import os
 import uuid
-import simplejson
+try:
+  import simplejson as json
+except:
+  import json
 import socket
 import threading
 
@@ -59,8 +62,8 @@ class Config(object):
 
 class Task(object):
   @staticmethod
-  def from_json(json):
-    return Task(simplejson.loads(json))
+  def from_json(json_str):
+    return Task(json.loads(json_str))
 
   @staticmethod
   def create(job_id, isolate_hash, description):
@@ -83,7 +86,7 @@ class Task(object):
       isolate_hash=self.isolate_hash,
       description=self.description,
       timeout=self.timeout)
-    return simplejson.dumps(job_struct)
+    return json.dumps(job_struct)
 
 class ReservedTask(object):
   def __init__(self, bs_elem):

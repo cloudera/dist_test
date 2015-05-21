@@ -8,7 +8,10 @@ import logging
 import os
 import re
 import select
-import simplejson
+try:
+  import simplejson as json
+except:
+  import json
 import subprocess
 import time
 
@@ -72,7 +75,7 @@ class Slave(object):
     output_archive_hash = None
     m = RUN_ISOLATED_OUT_RE.search(stdout)
     if m:
-      isolated_out = simplejson.loads(m.group(1))
+      isolated_out = json.loads(m.group(1))
       output_archive_hash = isolated_out['hash']
 
     self.results_store.mark_task_finished(task.task,
