@@ -3,6 +3,7 @@
 import beanstalkc
 import boto
 import dist_test
+import errno
 import fcntl
 import logging
 import os
@@ -22,6 +23,27 @@ class Slave(object):
     self.config = dist_test.Config()
     self.task_queue = dist_test.TaskQueue(self.config)
     self.results_store = dist_test.ResultsStore(self.config)
+    self.cache_dir = self._get_exclusive_cache_dir()
+
+  def _get_exclusive_cache_dir(self):
+    for i in xrange(0, 16):
+      dir = "%s.%d" % (self.config.ISOLATE_CACHE_DIR, i)
+      if not os.path.isdir(dir):
+        os.makedirs(dir)
+      self._lockfile = file(os.path.join(dir, "lock"), "w")
+      try:
+        fcntl.lockf(self._lockfile.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+      except IOError, e:
+        if e.errno in (errno.EACCES, errno.EAGAIN):
+          logging.info("Another slave already using cache dir %s", dir)
+          self._lockfile.close()
+          continue
+        raise
+      # Succeeded in locking
+      logging.info("Acquired lock on cache dir %s", dir)
+      return dir
+    raise Exception("Unable to lock any cache dir %s.<int>" %
+        self.config.ISOLATE_CACHE_DIR)
 
   def _set_flags(self, f):
     fd = f.fileno()
@@ -31,7 +53,7 @@ class Slave(object):
   def run_task(self, task, bs_job):
     cmd = [os.path.join(self.config.ISOLATE_HOME, "run_isolated.py"),
            "--isolate-server=%s" % self.config.ISOLATE_SERVER,
-           "--cache=%s" % self.config.ISOLATE_CACHE_DIR,
+           "--cache=%s" % self.cache_dir,
            "--verbose",
            "--hash", task.task.isolate_hash]
     logging.info("Running command: %s", repr(cmd))
