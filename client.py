@@ -145,14 +145,16 @@ def fetch(argv):
     path_prefix = os.path.join(options.out_dir, filename)
     if 'stdout_link' in t:
       path = path_prefix + ".stdout"
-      logging.info("Fetching stdout for task %s into %s", t['task_id'], path)
-      urllib.urlretrieve(t['stdout_link'], path)
+      if not os.path.exists(path):
+        logging.info("Fetching stdout for task %s into %s", t['task_id'], path)
+        urllib.urlretrieve(t['stdout_link'], path)
     else:
       logging.info("No stdout for task %s" % t['task_id'])
     if 'stderr_link' in t:
       path = path_prefix + ".stderr"
-      logging.info("Fetching stderr for task %s into %s", t['task_id'], path)
-      urllib.urlretrieve(t['stderr_link'], path)
+      if not os.path.exists(path):
+        logging.info("Fetching stderr for task %s into %s", t['task_id'], path)
+        urllib.urlretrieve(t['stderr_link'], path)
     else:
       logging.info("No stderr for task %s" % t['task_id'])
 
