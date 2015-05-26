@@ -194,13 +194,26 @@ class ResultsStore(object):
     parms = dict(job_id=task.job_id,
                  task_id=task.task_id,
                  hostname=socket.gethostname())
-    self._execute_query("""
+    q = self._execute_query("""
       UPDATE dist_test_tasks SET
         start_timestamp=now(),
         hostname=%(hostname)s
-      WHERE job_id = %(job_id)s AND task_id = %(task_id)s""", parms)
+      WHERE job_id = %(job_id)s AND task_id = %(task_id)s
+      AND status IS NULL""", parms)
+    return q.rowcount > 0
 
 
+  def cancel_job(self, job_id):
+    parms = dict(result_code=-1,
+                 job_id=job_id,
+                 stderr_abbrev="[canceled]")
+    self._execute_query("""
+      UPDATE dist_test_tasks SET
+        status = %(result_code)s,
+        stderr_abbrev = %(stderr_abbrev)s,
+        complete_timestamp = now()
+      WHERE job_id = %(job_id)s AND status IS NULL""", parms)
+    
   def mark_task_finished(self, task, result_code, stdout, stderr, output_archive_hash):
     fn = "%s.stdout" % task.task_id
     self._upload_to_s3(fn, stdout, fn)
@@ -215,7 +228,6 @@ class ResultsStore(object):
                  output_archive_hash=output_archive_hash,
                  stdout_abbrev=stdout[0:100],
                  stderr_abbrev=stderr[0:100])
-    logging.info("parms: %s", repr(parms))
     self._execute_query("""
       UPDATE dist_test_tasks SET
         status = %(result_code)s,

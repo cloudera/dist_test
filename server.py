@@ -51,6 +51,12 @@ class DistTestServer(object):
       self.task_queue.submit_task(task)
     return {"status": "SUCCESS"}
 
+  @cherrypy.expose
+  @cherrypy.tools.json_out()
+  def cancel_job(self, job_id):
+    self.results_store.cancel_job(job_id)
+    return {"status": "SUCCESS"}
+    
 
   @cherrypy.expose
   @cherrypy.tools.json_out()

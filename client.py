@@ -95,7 +95,7 @@ def get_job_id_from_args(command, args):
       logging.info("Using most recently submitted job id: %s" % job_id)
       return job_id
   if len(args) != 2:
-    print >>sys.stderr, "usage: %s %s <job-id>" % (os.path.basename(argv[0]), command)
+    print >>sys.stderr, "usage: %s %s <job-id>" % (os.path.basename(sys.argv[0]), command)
     sys.exit(1)
   return args[1]
 
@@ -158,11 +158,17 @@ def fetch(argv):
     else:
       logging.info("No stderr for task %s" % t['task_id'])
 
+def cancel_job(argv):
+  job_id = get_job_id_from_args("cancel", argv)
+  url = TEST_MASTER + "/cancel_job?" + urllib.urlencode([("job_id", job_id)])
+  result_str = urllib2.urlopen(url).read()
+  logging.info("Cancellation: %s" % result_str)
 
 def usage(argv):
   print >>sys.stderr, "usage: %s <command> [<args>]" % os.path.basename(argv[0])
   print >>sys.stderr, """Commands:
     submit  Submit a JSON file listing tasks
+    cancel  Cancel a previously submitted job
     watch   Watch an already-submitted job ID
     fetch   Fetch failed test logs from a previous job"""
   print >>sys.stderr, "%s <command> --help may provide further info" % argv[0]
@@ -179,6 +185,8 @@ def main(argv):
     submit(argv)
   elif command == "watch":
     watch(argv)
+  elif command == "cancel":
+    cancel_job(argv)
   elif command == "fetch":
     fetch(argv)
   else:

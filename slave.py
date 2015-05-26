@@ -56,8 +56,10 @@ class Slave(object):
            "--cache=%s" % self.cache_dir,
            "--verbose",
            "--hash", task.task.isolate_hash]
+    if not self.results_store.mark_task_running(task.task):
+      logging.info("Task %s canceled", task.task.description)
+      return
     logging.info("Running command: %s", repr(cmd))
-    self.results_store.mark_task_running(task.task)
     p = subprocess.Popen(
       cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     pipes = [p.stdout, p.stderr]
