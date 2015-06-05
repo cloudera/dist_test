@@ -215,13 +215,18 @@ class ResultsStore(object):
       WHERE job_id = %(job_id)s AND status IS NULL""", parms)
     
   def mark_task_finished(self, task, result_code, stdout, stderr, output_archive_hash):
-    fn = "%s.stdout" % task.task_id
-    self._upload_to_s3(fn, stdout, fn)
-    logging.info("Uploaded stdout for %s to S3" % task.task_id)
-    fn = "%s.stderr" % task.task_id
-    self._upload_to_s3(fn, stderr, fn)
-    logging.info("Uploaded stderr for %s to S3" % task.task_id)
-
+    if stdout:
+      fn = "%s.stdout" % task.task_id
+      self._upload_to_s3(fn, stdout, fn)
+      logging.info("Uploaded stdout for %s to S3" % task.task_id)
+    else:
+      stdout = ""
+    if stderr:
+      fn = "%s.stderr" % task.task_id
+      self._upload_to_s3(fn, stderr, fn)
+      logging.info("Uploaded stderr for %s to S3" % task.task_id)
+    else:
+      stderr = ""
     parms = dict(result_code=result_code,
                  job_id=task.job_id,
                  task_id=task.task_id,

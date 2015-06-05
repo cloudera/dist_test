@@ -108,9 +108,14 @@ class Slave(object):
       isolated_out = json.loads(m.group(1))
       output_archive_hash = isolated_out['hash']
 
+    # Don't upload results from successful builds
+    if rc == 0:
+      stdout = None
+      stderr = None
+
     self.results_store.mark_task_finished(task.task,
                                           output_archive_hash=output_archive_hash,
-                                          result_code=p.wait(),
+                                          result_code=rc,
                                           stdout=stdout,
                                           stderr=stderr)
 
