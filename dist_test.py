@@ -19,6 +19,8 @@ class Config(object):
 
   def __init__(self, path=None):
     if path is None:
+      path = os.getenv("DIST_TEST_CNF")
+    if path is None:
       path = os.path.join(os.getenv("HOME"), ".dist_test.cnf")
     logging.info("Reading configuration from %s", path)
     self.config = ConfigParser()
