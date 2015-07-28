@@ -61,7 +61,8 @@ def main():
 
     target_folders = []
     target_jars = []
-    required_suffix = [".jar", "-sources.jar", "-tests.jar", "-test-sources.jar"]
+    #required_suffix = [".jar", "-sources.jar", "-tests.jar", "-test-sources.jar"]
+    required_suffix = [".jar"]
 
     for target in possible_target_folders:
         path = base_dir + "/" + target
