@@ -28,7 +28,13 @@ function enumerate_tests () {
     for x in $tests; do
         classname=`basename $x | cut -d "." -f 1`
         prefix=`grep '^package ' $x | head -1 | cut -d " " -f 2 | cut -d ";" -f 1`
-        full=`echo ${prefix}.${classname}`
+        # The test class doesn't necessarily have a package, in which case we don't have a prefix
+        full=
+        if [[ -n "${prefix}" ]]; then
+            # Add a period, java-style
+            full="${prefix}."
+        fi
+        full="${full}${classname}"
         echo $full >> $OUTPUT_PATH
     done
 
