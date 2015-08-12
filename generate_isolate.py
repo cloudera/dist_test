@@ -131,8 +131,9 @@ def main():
     # Add the jar and test-classes folder to the classpath
     # We add test-classes rather than the test jar since some tests require it to be unzipped
     # This unzipping is done at runtime
-    for target in target_folders:
-        classpath.append(target+"/test-classes/")
+    classpath.append("test-classes/")
+    #for target in target_folders:
+    #    classpath.append(target+"/test-classes/")
     for jar in target_jars:
         if not jar.endswith("-tests.jar") and not jar.endswith("-test-sources.jar"):
             classpath.append(jar)
