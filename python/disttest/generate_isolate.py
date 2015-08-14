@@ -6,6 +6,7 @@ import pprint
 import json
 import argparse
 import logging
+import enumerate_tests
 from sets import Set
 
 def parse_args():
@@ -29,7 +30,6 @@ def parse_args():
 
     return parser.parse_args(sys.argv[1:])
 
-
 def main():
 
     args = parse_args()
@@ -45,19 +45,19 @@ def main():
         sys.exit(1)
 
     base_dir = args.base_dir
-    source_repo = args.source_dir_name
+    source_dir = args.source_dir_name
 
+    # Look for target folders that are next to a pom.xml.
     logging.info("Looking for compiled jars in source repo...")
-    cmd = """cd %s; find %s/ -name target""" % (base_dir, source_repo)
+
+    cmd = """cd %s; find %s/ -name target""" % (base_dir, source_dir)
     cmd_output = subprocess.check_output(cmd, shell=True)
 
     if len(cmd_output) == 0:
-        logging.critical("Could not find any target folders in directory %s/%s", extra=(base_dir, source_repo))
+        logging.critical("Could not find any target folders in directory %s/%s", extra=(base_dir, source_dir))
         sys.exit(1)
 
     possible_target_folders = cmd_output.split("\n")[:-1]
-
-    # Prune for target folders with -sources.jar, -tests.jar, test-sources.jar, likely build artifacts
 
     target_folders = []
     target_jars = []
@@ -90,7 +90,7 @@ def main():
         sys.exit(1)
 
     logging.info("Finding dependencies with maven...")
-    cmd = """cd %s/%s; mvn dependency:build-classpath""" % (base_dir, source_repo)
+    cmd = """cd %s/%s; mvn dependency:build-classpath""" % (base_dir, source_dir)
     mvn_deps = subprocess.check_output(cmd, shell=True)
     # XXX: temporary hack! Use the above for real use
     #mvn_deps = open("/home/andrew/dev/hadoop-isolate/dep", "rt").read()
