@@ -2,6 +2,8 @@
 
 import os
 
+import classfile
+
 class Enumerator:
     def __init__(self, directory):
         self.directory = directory
@@ -28,12 +30,12 @@ def PatternEnumerator(Enumerator):
 
     def __walk(self):
         # Find the modules first, directories that have a pom.xml and a target dir
-        for root, files, dirs in os.walk(directory):
+        for root, dirs, files in os.walk(directory):
             if files.contains("pom.xml") and dirs.contains("target"):
                 self.modules_to_classes[root] = []
         # For each module, look for test classes within target dir
         for module in self.modules_to_classes.keys():
-            for root, files, dirs in os.walk(os.path.join(module, "target")):
+            for root, dirs, files in os.walk(os.path.join(module, "target")):
                 for f in files:
                     # Only class files
                     if not f.endswith(".class"):
@@ -54,15 +56,15 @@ def PatternEnumerator(Enumerator):
             v = [x for x in v if NoAbstractFilter.accept(v)]
 
 class FileFilter:
-    def accept(self, classfile):
+    def accept(self, f):
         pass
 
 class AnyFileFilter(FileFilter):
-    def accept(self, classfile):
-        return True
+    def accept(self, f):
+        return os.path.isfile(f)
 
 class NoAbstractFilter(FileFilter):
-    def accept(self, classfile):
-        clazz = JavaClassfile(classfile)
-        return !(clazz.is_interface() or clazz.is_abstract())
+    def accept(self, f):
+        clazz = classfile.Classfile(f)
+        return not (clazz.is_interface() or clazz.is_abstract())
 

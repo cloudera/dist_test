@@ -2,8 +2,12 @@
 
 import os
 import struct
+import logging
 
-class JavaClassfile:
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG)
+
+class Classfile:
     """
 Parser for Java classfile headers.
 See reference material at:
@@ -53,7 +57,8 @@ Currently only supports the access_flags field.
         }
 
         """Read a single constant pool entry from a stream."""
-        tag = ord(f.read())
+        tag = ord(f.read(1))
+        logger.debug("Tag is %s", str(tag))
         name = constant_tag[tag]
         # Handle Utf8 special since it's variable sized
         if name == "Utf8":
@@ -73,12 +78,15 @@ Currently only supports the access_flags field.
         # u2             access_flags;
         # ...
         self.__magic = struct.unpack(">I", f.read(4))[0]
+        logger.debug("Magic constant is %s" % self.__magic)
         assert self.__magic == 0xCAFEBABE
 
-        f.read(4) # minor, major
+        major, minor = struct.unpack(">HH", f.read(4)) # minor, major
+        logger.debug("Minor, major is %s, %s", minor, major)
 
         cp_count = struct.unpack(">H", f.read(2))[0]
-        for c in xrange(len(cp_count-1)):
+        logger.debug("%s constants in constant pool", cp_count)
+        for c in xrange(cp_count-1):
             self.__skip_constant(f)
 
         self.__access_flags = unpack(">H", f.read(2))[0]
