@@ -5,7 +5,7 @@ import struct
 import logging
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG)
+#logging.basicConfig(level=logging.DEBUG)
 
 class Classfile:
     """
@@ -21,7 +21,8 @@ Currently only supports the access_flags field.
         with open(classfile, "rb") as f:
             self.__parse(f)
 
-    def __skip_constant(self, f):
+    def __skip_constants(self, f):
+        """Skip over constant pool count and entries from a stream."""
         constant_tag = {
             7: "Class",
             9: "Fieldref",
@@ -40,32 +41,46 @@ Currently only supports the access_flags field.
         }
 
         # This does not include Utf8 since it's variable sized
+        # Does not count the first byte used for the tag field
         constant_sizes = {
-            "Class": 3,
-            "Fieldref": 5,
-            "Methodref": 5,
-            "InterfaceMethodref": 5,
-            "String": 3,
-            "Integer": 5,
-            "Float": 5,
-            "Long": 9,
-            "Double": 9,
-            "NameAndType": 5,
-            "MethodHandle": 4,
-            "MethodType": 3,
-            "InvokeDynamic": 5,
+            "Class": 2,
+            "Fieldref": 4,
+            "Methodref": 4,
+            "InterfaceMethodref": 4,
+            "String": 2,
+            "Integer": 4,
+            "Float": 4,
+            "Long": 8,
+            "Double": 8,
+            "NameAndType": 4,
+            "MethodHandle": 3,
+            "MethodType": 2,
+            "InvokeDynamic": 4,
         }
 
-        """Read a single constant pool entry from a stream."""
-        tag = ord(f.read(1))
-        logger.debug("Tag is %s", str(tag))
-        name = constant_tag[tag]
-        # Handle Utf8 special since it's variable sized
-        if name == "Utf8":
-            length = struct.unpack(">H", f.read(2))[0]
-            f.read(length)
-        else:
-            f.read(constant_sizes[name])
+        # The count is 1-indexed, so need to subtract 1 when iterating
+        self.__cp_count = struct.unpack(">H", f.read(2))[0]
+        logger.debug("%s constants in constant pool", self.__cp_count)
+
+        idx = 0
+        while idx < self.__cp_count - 1:
+            logger.debug("Skipping constant %s of %s", idx, self.__cp_count - 1)
+            tag = ord(f.read(1))
+            name = constant_tag[tag]
+            logger.debug("Tag is %s", name)
+            # Handle Utf8 special since it's variable sized
+            if name == "Utf8":
+                length = struct.unpack(">H", f.read(2))[0]
+                logger.debug("Reading string of len %s", length)
+                f.read(length)
+            else:
+                f.read(constant_sizes[name])
+
+            idx += 1
+            # Long and Double take up two entries, advance cp count again.
+            # See: https://docs.oracle.com/javase/specs/jvms/se7/html/jvms-4.html#jvms-4.4.5
+            if name in ("Long", "Double"):
+                idx += 1
 
     def __parse(self, f):
         """Parse header of provided classfile, setting member variables."""
@@ -78,18 +93,18 @@ Currently only supports the access_flags field.
         # u2             access_flags;
         # ...
         self.__magic = struct.unpack(">I", f.read(4))[0]
-        logger.debug("Magic constant is %s" % self.__magic)
+        logger.debug("Magic constant is %s" % hex(self.__magic))
         assert self.__magic == 0xCAFEBABE
 
-        major, minor = struct.unpack(">HH", f.read(4)) # minor, major
-        logger.debug("Minor, major is %s, %s", minor, major)
+        self.__minor, self.__major = struct.unpack(">HH", f.read(4))
+        logger.debug("Minor, major is %s, %s", self.__minor, self.__major)
 
-        cp_count = struct.unpack(">H", f.read(2))[0]
-        logger.debug("%s constants in constant pool", cp_count)
-        for c in xrange(cp_count-1):
-            self.__skip_constant(f)
+        self.__skip_constants(f)
 
-        self.__access_flags = unpack(">H", f.read(2))[0]
+        self.__access_flags = struct.unpack(">H", f.read(2))[0]
+
+    def access_flags(self):
+        return self.__access_flags
 
     def is_interface(self):
         return self.__access_flags & 0x0200 > 0

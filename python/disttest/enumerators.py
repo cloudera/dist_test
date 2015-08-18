@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import os
+import logging
 
 import classfile
 
