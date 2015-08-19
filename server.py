@@ -1,10 +1,16 @@
 #!/usr/bin/env python
 
+import base64
 import cherrypy
 import dist_test
 import logging
+import os
 from jinja2 import Template
 import simplejson
+import StringIO
+import gzip
+
+TRACE_HTML = os.path.join(os.path.dirname(__file__), "trace.html")
 
 class DistTestServer(object):
   def __init__(self):
@@ -39,6 +45,30 @@ class DistTestServer(object):
       success_percent, fail_percent)
     body += self._render_tasks(tasks)
     return self.render_container(body)
+
+  @staticmethod
+  def _delta_us(delta):
+    return delta.seconds * 1000000 + delta.microseconds
+
+  @cherrypy.expose
+  def trace(self, job_id):
+    tasks = self.results_store.fetch_task_rows_for_job(job_id)
+    ret = []
+    min_st = min(task['submit_timestamp'] for task in tasks)
+    for task in tasks:
+      if task['complete_timestamp']:
+        ret.append(dict(cat="run", pid=task['hostname'], ph="X",
+                        name=task['description'],
+                        dur=self._delta_us(task['complete_timestamp'] - task['start_timestamp']),
+                        ts=self._delta_us(task['start_timestamp'] - min_st)))
+    trace_gz = StringIO.StringIO()
+    simplejson.dump({"traceEvents": ret},
+                    gzip.GzipFile(fileobj=trace_gz, mode="w"))
+    trace_gz_b64 = base64.encodestring(trace_gz.getvalue())
+    with open(TRACE_HTML, "r") as f:
+      trace = f.read()
+      trace = trace.replace("SUBSTITUTE_TRACE_HERE", trace_gz_b64)
+    return trace
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
