@@ -20,22 +20,7 @@ class PatternEnumerator(Enumerator):
 
     def __init__(self, directory):
         Enumerator.__init__(self, directory)
-        #self.filters = [AnyFileFilter(), PotentialTestClassNameFilter(), NoAbstractClassFilter()]
-        self.filters = [AnyFileFilter(), PotentialTestClassNameFilter()]
-        self._walk()
-
-    def add_filter(self, f):
-        return self.modules_to_classes.keys()
-
-    def get_modules_to_classes(self):
-        return self.modules_to_classes
-
-class PatternEnumerator(Enumerator):
-
-    def __init__(self, directory):
-        Enumerator.__init__(self, directory)
-        #self.filters = [AnyFileFilter(), PotentialTestClassNameFilter(), NoAbstractClassFilter()]
-        self.filters = [AnyFileFilter(), PotentialTestClassNameFilter()]
+        self.filters = [AnyFileFilter(), PotentialTestClassNameFilter(), NoAbstractClassFilter()]
         self._walk()
 
     def add_filter(self, f):
