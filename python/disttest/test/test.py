@@ -7,14 +7,17 @@ from .. import mavenproject, packager, isolate
 
 TEST_RESOURCES = os.path.join(os.path.abspath(os.path.dirname(__file__)), "test-resources")
 
+TEST_PROJECT_PATH = "/home/andrew/dev/hadoop/cdh5-2.6.0_5.4.0"
+
 class TestMavenProject(unittest.TestCase):
 
     def test_MavenProject(self):
-        project = mavenproject.MavenProject("/home/andrew/dev/hadoop/trunk/hadoop-common-project/hadoop-kms")
+        project = mavenproject.MavenProject(TEST_PROJECT_PATH)
         for module, classes in project.get_modules_to_classes().iteritems():
-            print module
-            for c in classes:
-                print c
+            if "hadoop-kms" in module:
+                print module
+                for c in classes:
+                    print c
 
 class TestFilters(unittest.TestCase):
 
@@ -49,17 +52,21 @@ class TestPackager(unittest.TestCase):
     @classmethod
     def setUpClass(self):
         self.output_dir = tempfile.mkdtemp()
-        self.project = mavenproject.MavenProject("/home/andrew/dev/hadoop/trunk/hadoop-common-project/hadoop-kms")
+        self.project = mavenproject.MavenProject(TEST_PROJECT_PATH)
         self.packager = packager.Packager(self.project, self.output_dir)
 
-    @classmethod
-    def tearDownClass(self):
+    def print_output_dir(self):
         for root, dirs, files in os.walk(self.output_dir):
             print "Contents of", root
             for f in files:
                 print os.path.join(root, f)
             print
+
+    @classmethod
+    def tearDownClass(self):
+        #self.print_output_dir()
         shutil.rmtree(self.output_dir)
+        pass
 
     def test_package_target_dirs(self):
         self.packager.package_target_dirs()
@@ -79,7 +86,7 @@ class TestIsolate(unittest.TestCase):
         pass
 
     def test_isolate(self):
-        i = isolate.Isolate("/home/andrew/dev/hadoop/trunk/hadoop-common-project/hadoop-kms", self.output_dir)
+        i = isolate.Isolate(TEST_PROJECT_PATH, self.output_dir)
         i.package()
         i.generate()
 

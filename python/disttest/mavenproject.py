@@ -3,9 +3,16 @@ import logging
 
 import classfile
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 class MavenProject:
 
     def __init__(self, project_root):
+        if not os.path.isdir(project_root):
+            raise Exception("Path " + project_root + "is not a directory!")
+        if not project_root.endswith("/"):
+            project_root += "/"
         self.project_root = project_root
         self.modules_to_classes = {}
         self.filters = [AnyFileFilter(), PotentialTestClassNameFilter(), NoAbstractClassFilter()]
@@ -24,10 +31,10 @@ class MavenProject:
         for root, dirs, files in os.walk(self.project_root):
             if "pom.xml" in files and "target" in dirs:
                 self.modules_to_classes[root] = []
+
         # For each module, look for test classes within target dir
         for module in self.modules_to_classes.keys():
-            module_dir = os.path.join(module, "target")
-            print "Traversing module", module_dir
+            logger.debug("Traversing module %s", module)
             for root, dirs, files in os.walk(os.path.join(module, "target")):
                 # Apply all the filters
                 filtered = [os.path.join(root, f) for f in files]
@@ -36,6 +43,12 @@ class MavenProject:
                 # Add filtered files to dict
                 for f in filtered:
                     self.modules_to_classes[module].append(os.path.join(root, f))
+
+        num_modules = len(self.modules_to_classes.keys())
+        num_classes = reduce(lambda x,y: x+y,\
+                             map(lambda x: len(x), self.modules_to_classes.values()))
+        logging.info("Found %s modules with %s test classes in %s",\
+                     num_modules, num_classes, self.project_root)
 
 class FileFilter:
     def accept(self, f):

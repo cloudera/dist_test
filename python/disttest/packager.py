@@ -1,7 +1,11 @@
+import errno
 import os
 import logging
 import shlex, subprocess
 import shutil
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class Packager:
 
@@ -17,10 +21,24 @@ class Packager:
         else:
             self.__ignore = ignore
 
+    def __mkdirs_recursive(self, path):
+        try:
+            os.makedirs(path)
+            logger.debug("Created directory %s", path)
+        except OSError as exc:
+            if exc.errno == errno.EEXIST and os.path.isdir(path):
+                pass
+            else:
+                raise
+
     def __copy(self, module, tree):
         # These are absolute paths, trim to get just the relative path
         relpath = os.path.relpath(module, self.__input_root)
-        # Copy the pom.xmls
+        # Create the parent directory if it doesn't exist
+        parent_relpath = os.path.relpath(module, os.path.dirname(self.__input_root))
+        parent_output_path = os.path.join(self.__output_root, parent_relpath)
+        self.__mkdirs_recursive(parent_output_path)
+        # Form up the input and output paths
         input_path = os.path.join(module, tree)
         output_path = os.path.join(self.__output_root, relpath, tree)
         # Do the copy with ignore patterns
@@ -37,18 +55,24 @@ class Packager:
             self.__copy(module, "pom.xml")
             self.__copy(module, "target")
 
+        logger.info("Packaged %s target directories to output directory %s",\
+                    len(self.__maven_project.get_modules()), self.__output_root)
+
     def package_maven_dependencies(self):
         """Put dependencies from the maven repo into __MAVEN_REL_ROOT in the output directory"""
 
         # Use Maven to copy dependencies into output dir
         cmd = "mvn dependency:copy-dependencies -Dmdep.useRepositoryLayout=true -Dmdep.copyPom -DoutputDirectory=%s"
-        cmd = cmd % (os.path.join(self.__output_root, self.__MAVEN_REL_ROOT))
+        output_path = os.path.join(self.__output_root, self.__MAVEN_REL_ROOT)
+        cmd = cmd % output_path
         args = shlex.split(cmd)
         p = subprocess.Popen(args, cwd=self.__maven_project.project_root)
         p.wait()
 
+        logger.info("Finished copying maven dependencies to %s", output_path)
+
     def get_relative_output_paths(self):
-        """Generate relative paths of files in the output directory. Not thread-safe."""
+        """Generate relative paths of files in the output directory."""
         paths = []
         for root, dirs, files in os.walk(self.__output_root):
             root_relpath = os.path.relpath(root, self.__output_root)
