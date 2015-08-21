@@ -46,3 +46,12 @@ class Packager:
         args = shlex.split(cmd)
         p = subprocess.Popen(args, cwd=self.__maven_project.project_root)
         p.wait()
+
+    def get_relative_output_paths(self):
+        """Generate relative paths of files in the output directory. Not thread-safe."""
+        paths = []
+        for root, dirs, files in os.walk(self.__output_root):
+            root_relpath = os.path.relpath(root, self.__output_root)
+            for f in files:
+                paths += [os.path.join(root_relpath, f)]
+        return paths

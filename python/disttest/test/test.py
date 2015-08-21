@@ -3,8 +3,7 @@ import shutil
 import tempfile
 import unittest
 
-from .. import mavenproject
-from .. import packager
+from .. import mavenproject, packager, isolate
 
 TEST_RESOURCES = os.path.join(os.path.abspath(os.path.dirname(__file__)), "test-resources")
 
@@ -60,12 +59,29 @@ class TestPackager(unittest.TestCase):
             for f in files:
                 print os.path.join(root, f)
             print
+        shutil.rmtree(self.output_dir)
 
     def test_package_target_dirs(self):
         self.packager.package_target_dirs()
 
     def test_package_maven_dependencies(self):
         self.packager.package_maven_dependencies()
+
+class TestIsolate(unittest.TestCase):
+
+    @classmethod
+    def setUp(self):
+        self.output_dir = tempfile.mkdtemp()
+
+    @classmethod
+    def tearDown(self):
+        #shutil.rmtree(self.output_dir)
+        pass
+
+    def test_isolate(self):
+        i = isolate.Isolate("/home/andrew/dev/hadoop/trunk/hadoop-common-project/hadoop-kms", self.output_dir)
+        i.package()
+        i.generate()
 
 if __name__ == "__main__":
     unittest.main()
