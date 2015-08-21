@@ -5,30 +5,25 @@ import logging
 
 import classfile
 
-class Enumerator:
-    def __init__(self, directory):
-        self.directory = directory
+class MavenProject:
+
+    def __init__(self, project_root):
+        self.project_root = project_root
         self.modules_to_classes = {}
-
-    def get_modules(self):
-        return self.modules_to_classes.keys()
-
-    def get_modules_to_classes(self):
-        return self.modules_to_classes
-
-class PatternEnumerator(Enumerator):
-
-    def __init__(self, directory):
-        Enumerator.__init__(self, directory)
         self.filters = [AnyFileFilter(), PotentialTestClassNameFilter(), NoAbstractClassFilter()]
         self._walk()
 
-    def add_filter(self, f):
-        self.filters += [f]
+    def get_modules(self):
+        """Return the absolute path of each maven module in the project"""
+        return self.modules_to_classes.keys()
+
+    def get_modules_to_classes(self):
+        """Return the mapping of modules (absolute paths) to test class files within that module (absolute paths)"""
+        return self.modules_to_classes
 
     def _walk(self):
         # Find the modules first, directories that have a pom.xml and a target dir
-        for root, dirs, files in os.walk(self.directory):
+        for root, dirs, files in os.walk(self.project_root):
             if "pom.xml" in files and "target" in dirs:
                 self.modules_to_classes[root] = []
         # For each module, look for test classes within target dir
@@ -64,8 +59,8 @@ class PotentialTestClassNameFilter(FileFilter):
         # Match against default Surefire pattern
         name = f[:-len(".class")]
         if not name.startswith("Test") and \
-           not name.endswith("Test") and \
-           not name.endswith("TestCase"):
+        not name.endswith("Test") and \
+        not name.endswith("TestCase"):
             return False
         return True
 
