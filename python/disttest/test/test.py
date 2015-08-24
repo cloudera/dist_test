@@ -3,7 +3,7 @@ import shutil
 import tempfile
 import unittest
 
-from .. import mavenproject, packager, isolate
+from .. import mavenproject, packager, isolate, classfile
 
 TEST_RESOURCES = os.path.join(os.path.abspath(os.path.dirname(__file__)), "test-resources")
 
@@ -13,36 +13,32 @@ class TestMavenProject(unittest.TestCase):
 
     def test_MavenProject(self):
         project = mavenproject.MavenProject(TEST_PROJECT_PATH)
-        for module, classes in project.get_modules_to_classes().iteritems():
-            if "hadoop-kms" in module:
-                print module
-                for c in classes:
-                    print c
+        for module in project.modules:
+            if "hadoop-kms" in module.root:
+                print module.root
+                for c in module.test_classes:
+                    print c.name
 
 class TestFilters(unittest.TestCase):
 
     def setUp(self):
         self.temp = tempfile.mkdtemp()
-        open(os.path.join(self.temp, "foofile"), "w").close()
 
     def tearDown(self):
         shutil.rmtree(self.temp)
 
-    def test_AnyFileFilter(self):
-        any_filter = mavenproject.AnyFileFilter()
-        self.assertFalse(any_filter.accept(os.path.join(self.temp, "nosuchfileexists")))
-        self.assertTrue(any_filter.accept(os.path.join(self.temp, "foofile")))
-
     def test_NoAbstractClassFilter(self):
         noabs_filter = mavenproject.NoAbstractClassFilter()
+        # Test some abstract and concrete classes
         num_files = 0
         for root, dirs, files in os.walk(TEST_RESOURCES, "classes/"):
             for f in files:
                 fullpath = os.path.realpath(os.path.join(root, f))
+                clazz = classfile.Classfile(fullpath)
                 if root.endswith("abstract"):
-                    self.assertFalse(noabs_filter.accept(fullpath), "Path %s is abstract!" % fullpath)
+                    self.assertFalse(noabs_filter.accept(clazz), "Path %s is abstract!" % fullpath)
                 else:
-                    self.assertTrue(noabs_filter.accept(fullpath), "Path %s is not abstract!" % fullpath)
+                    self.assertTrue(noabs_filter.accept(clazz), "Path %s is not abstract!" % fullpath)
                 num_files += 1
 
         print "Filtered %s files" % num_files

@@ -9,56 +9,101 @@ logger = logging.getLogger(__name__)
 
 class Classfile:
     """
-Parser for Java classfile headers.
-See reference material at:
-    https://docs.oracle.com/javase/specs/jvms/se7/html/jvms-4.html
+Models a Java classfile. Determines two important pieces of information:
+    * The package name (based on the directory structure)
+    * If the class is abstract or an interface (by parsing the classfile header)
 
-Currently only supports the access_flags field.
-"""
+See directory structure documentation at:
+    https://docs.oracle.com/javase/tutorial/java/package/managingfiles.html
+
+See classfile format reference material at:
+    https://docs.oracle.com/javase/specs/jvms/se7/html/jvms-4.html
+    """
 
     def __init__(self, classfile):
         self.classfile = classfile
+        assert classfile.endswith(".class")
+        # Determine the name-with-package from the folder layout
+        self.name = Classfile.__determine_qualified_name(self.classfile)
+        # Parse the classfile
         with open(classfile, "rb") as f:
             self.__parse(f)
 
+    @staticmethod
+    def __determine_qualified_name(path):
+        # We're looking for a folder named "classes" or "test-classes"
+        # See: https://docs.oracle.com/javase/tutorial/java/package/managingfiles.html
+        components = Classfile.__splitall(path)
+        package = None
+        for x in xrange(len(components)):
+            if components[x] in ("classes", "test-classes"):
+                package = ".".join(components[x:])
+                break
+        if package is None:
+            raise Exception("Could not determine package name of file " + path)
+        # Trim off ".class" from the basename to get name of class
+        filename = os.path.basename(path)
+        assert filename.endswith(".class")
+        classname = filename[:len(".class")]
+        # Join together. Handles when there is an empty package.
+        return ".".join([package, classname])
+
+    @staticmethod
+    def __splitall(path):
+        components = []
+        while True:
+            head, tail = os.path.split(path)
+            if head is path: # happens for /, since its parent is still /
+                components.append(head)
+                break
+            elif tail is path: # relative paths, terminates with path as tail
+                components.append(tail)
+                break
+            else:
+                path = head
+                components.append(tail)
+        # Return reversed result since we appended back to front
+        return [x for x in reversed(components)]
+
+    __constant_tag = {
+        7: "Class",
+        9: "Fieldref",
+        10: "Methodref",
+        11: "InterfaceMethodref",
+        8: "String",
+        3: "Integer",
+        4: "Float",
+        5: "Long",
+        6: "Double",
+        12: "NameAndType",
+        1: "Utf8",
+        15: "MethodHandle",
+        16: "MethodType",
+        18: "InvokeDynamic",
+    }
+
+    # This does not include Utf8 since it's variable sized
+    # Does not count the first byte used for the tag field
+    __constant_sizes = {
+        "Class": 2,
+        "Fieldref": 4,
+        "Methodref": 4,
+        "InterfaceMethodref": 4,
+        "String": 2,
+        "Integer": 4,
+        "Float": 4,
+        "Long": 8,
+        "Double": 8,
+        "NameAndType": 4,
+        "MethodHandle": 3,
+        "MethodType": 2,
+        "InvokeDynamic": 4,
+    }
+
     def __skip_constants(self, f):
         """Skip over constant pool count and entries from a stream."""
-        constant_tag = {
-            7: "Class",
-            9: "Fieldref",
-            10: "Methodref",
-            11: "InterfaceMethodref",
-            8: "String",
-            3: "Integer",
-            4: "Float",
-            5: "Long",
-            6: "Double",
-            12: "NameAndType",
-            1: "Utf8",
-            15: "MethodHandle",
-            16: "MethodType",
-            18: "InvokeDynamic",
-        }
 
-        # This does not include Utf8 since it's variable sized
-        # Does not count the first byte used for the tag field
-        constant_sizes = {
-            "Class": 2,
-            "Fieldref": 4,
-            "Methodref": 4,
-            "InterfaceMethodref": 4,
-            "String": 2,
-            "Integer": 4,
-            "Float": 4,
-            "Long": 8,
-            "Double": 8,
-            "NameAndType": 4,
-            "MethodHandle": 3,
-            "MethodType": 2,
-            "InvokeDynamic": 4,
-        }
-
-        # The count is 1-indexed, so need to subtract 1 when iterating
+        # The count is 1-indexed, so need to subtract 1 everywhere
         self.__cp_count = struct.unpack(">H", f.read(2))[0]
         logger.debug("%s constants in constant pool", self.__cp_count)
 
@@ -66,7 +111,7 @@ Currently only supports the access_flags field.
         while idx < self.__cp_count - 1:
             logger.debug("Skipping constant %s of %s", idx, self.__cp_count - 1)
             tag = ord(f.read(1))
-            name = constant_tag[tag]
+            name = self.__constant_tag[tag]
             logger.debug("Tag is %s", name)
             # Handle Utf8 special since it's variable sized
             if name == "Utf8":
@@ -74,7 +119,7 @@ Currently only supports the access_flags field.
                 logger.debug("Reading string of len %s", length)
                 f.read(length)
             else:
-                f.read(constant_sizes[name])
+                f.read(self.__constant_sizes[name])
 
             idx += 1
             # Long and Double take up two entries, advance cp count again.

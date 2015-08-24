@@ -55,6 +55,7 @@ class Isolate:
 
     __RUN_SCRIPT_NAME = """run_test.sh"""
     __RUN_SCRIPT_CONTENTS = """#!/usr/bin/env bash
+export JAVA7_BUILD=true
 . /opt/toolchain/toolchain.sh
 M2_REPO=$(pwd)/.m2/repository mvn surefire:test -f $1 -Dtest=$2"""
 
@@ -93,18 +94,14 @@ M2_REPO=$(pwd)/.m2/repository mvn surefire:test -f $1 -Dtest=$2"""
             pprint.pprint(isolate, stream=out)
 
         # Write the per-test json files for isolate's batcharchive command
-        for module, classes in self.maven_project.get_modules_to_classes().iteritems():
-            abs_pom = os.path.join(module, "pom.xml")
-            rel_pom = os.path.relpath(abs_pom, self.maven_project.project_root)
-            for c in classes:
-                test_class = os.path.basename(c)
-                if test_class.endswith(".class"):
-                    test_class = test_class[:-len(".class")]
-                filename = os.path.join(self.output_dir, "%s.isolated.gen.json" % test_class)
-                args = ["-i", self.__ISOLATE_NAME, "-s", test_class + ".isolated"]
+        for module in self.maven_project.modules:
+            rel_pom = os.path.relpath(module.pom, self.maven_project.project_root)
+            for test in module.test_classes:
+                filename = os.path.join(self.output_dir, "%s.isolated.gen.json" % test.name)
+                args = ["-i", self.__ISOLATE_NAME, "-s", test.name + ".isolated"]
                 extra_args = {
                     "POM" : rel_pom,
-                    "TESTCLASS" : test_class,
+                    "TESTCLASS" : test.name,
                 }
                 for k,v in extra_args.iteritems():
                     args += ["--extra-variable", "%s=%s" % (k,v)]
@@ -112,7 +109,7 @@ M2_REPO=$(pwd)/.m2/repository mvn surefire:test -f $1 -Dtest=$2"""
                     "version" : 1,
                     "dir" : self.output_dir,
                     "args" : args,
-                    "name" : test_class
+                    "name" : test.name,
                 }
                 with open(filename, "wt") as out:
                     json.dump(gen, out)
