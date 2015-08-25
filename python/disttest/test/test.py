@@ -18,6 +18,8 @@ class TestMavenProject(unittest.TestCase):
                 print module.root
                 for c in module.test_classes:
                     print c.name
+                self.assertEquals(1, len(module.test_artifacts))
+                self.assertTrue("test-sources.jar" in module.test_artifacts[0])
 
 class TestFilters(unittest.TestCase):
 

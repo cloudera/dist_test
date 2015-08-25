@@ -33,18 +33,18 @@ See classfile format reference material at:
     def __determine_qualified_name(path):
         # We're looking for a folder named "classes" or "test-classes"
         # See: https://docs.oracle.com/javase/tutorial/java/package/managingfiles.html
-        components = Classfile.__splitall(path)
+        components = Classfile.__splitall(path)[:-1]
         package = None
         for x in xrange(len(components)):
             if components[x] in ("classes", "test-classes"):
-                package = ".".join(components[x:])
+                package = ".".join(components[x+1:])
                 break
         if package is None:
             raise Exception("Could not determine package name of file " + path)
         # Trim off ".class" from the basename to get name of class
         filename = os.path.basename(path)
         assert filename.endswith(".class")
-        classname = filename[:len(".class")]
+        classname = filename[:-len(".class")]
         # Join together. Handles when there is an empty package.
         return ".".join([package, classname])
 

@@ -12,8 +12,8 @@ class Module:
         self.root = root
         self.pom = os.path.join(root, "pom.xml")
         self.test_classes = []
-        # TODO: Use the JARs instead?
-        self.test_artifacts = [self.pom, os.path.join(root, "target")]
+        self.source_artifacts = []
+        self.test_artifacts = []
 
 class MavenProject:
 
@@ -45,6 +45,18 @@ class MavenProject:
                     classfiles = [c for c in classfiles if fil.accept(c)]
                 # Set module's classes to the filtered classfiles
                 module.test_classes += classfiles
+
+        # For each module, look for test-sources jars
+        # These will later be extracted
+        for module in self.modules:
+            target_root = os.path.join(module.root, "target")
+            for entry in os.listdir(target_root):
+                abs_path = os.path.join(target_root, entry)
+                if os.path.isfile(abs_path):
+                    if entry.endswith("-test-sources.jar") or entry.endswith("-tests.jar"):
+                        module.test_artifacts.append(abs_path)
+                    elif entry.endswith(".jar") and not entry.endswith("-sources.jar") and not entry.endswith("-javadoc.jar"):
+                        module.source_artifacts.append(abs_path)
 
         num_modules = len(self.modules)
         num_classes = reduce(lambda x,y: x+y,\
