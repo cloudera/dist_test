@@ -16,7 +16,8 @@ except:
 import subprocess
 import time
 
-RUN_ISOLATED_OUT_RE = re.compile(r'\[run_isolated_out_hack\](.+?)\[/run_isolated_out_hack\]')
+RUN_ISOLATED_OUT_RE = re.compile(r'\[run_isolated_out_hack\](.+?)\[/run_isolated_out_hack\]',
+                                 re.DOTALL)
 
 class Slave(object):
   def __init__(self):
