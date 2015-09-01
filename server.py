@@ -6,6 +6,7 @@ import dist_test
 import logging
 import os
 from jinja2 import Template
+import urllib
 import simplejson
 import StringIO
 import gzip
@@ -23,7 +24,8 @@ class DistTestServer(object):
     stats = self.task_queue.stats()
     body = "<h1>Stats</h1>\n" + self._render_stats(stats)
     recent_tasks = self.results_store.fetch_recent_task_rows()
-    body += "<h1>Recent tasks</h1>\n" + self._render_tasks(recent_tasks)
+    summary = self._summarize_tasks(tasks)
+    body += "<h1>Recent tasks</h1>\n" + self._render_tasks(recent_tasks, summary)
     return self.render_container(body)
 
   @cherrypy.expose
@@ -43,7 +45,12 @@ class DistTestServer(object):
       <div class="filler red" style="width: %.2f%%;"></div>
     </div>""" % (
       success_percent, fail_percent)
-    body += self._render_tasks(tasks)
+    body += """
+    <p>
+    <a href="/trace?job_id=%s">Trace view</a>
+    </p>
+    """ % (urllib.quote(job_id))
+    body += self._render_tasks(tasks, job_summary)
     return self.render_container(body)
 
   @staticmethod
@@ -132,8 +139,10 @@ class DistTestServer(object):
     result = {}
     result['total_tasks'] = len(tasks)
     result['finished_tasks'] = len([1 for t in tasks if t['status'] is not None])
+    result['running_tasks'] = len([1 for t in tasks if t['status'] is None])
     result['failed_tasks'] = len([1 for t in tasks if t['status'] is not None and t['status'] != 0])
     result['succeeded_tasks'] = len([1 for t in tasks if t['status'] == 0])
+    result['timedout_tasks'] = len([1 for t in tasks if t['status'] == -9])
     return result
 
   def _render_stats(self, stats):
@@ -145,7 +154,7 @@ class DistTestServer(object):
       </code>""")
     return template.render(stats=stats)
 
-  def _render_tasks(self, tasks):
+  def _render_tasks(self, tasks, job_summary):
     for t in tasks:
       if t['stdout_abbrev']:
         t['stdout_link'] = self.results_store.generate_output_link(t, "stdout")
@@ -170,15 +179,17 @@ $(document).ready(function() {
   $('#show-running').click(function() { showOnly('task-running'); });
   $('#show-successful').click(function() { showOnly('task-successful'); });
   $('#show-failed').click(function() { showOnly('task-failed'); });
+  $('#show-timedout').click(function() { showOnly('task-timedout'); });
 } );
 </script>
     <br style="clear: both;"/>
     <div>
       Show:
-      <a id="show-all">all</a> |
-      <a id="show-running">running</a> |
-      <a id="show-failed">failed</a> |
-      <a id="show-successful">successful</a>
+      <a id="show-all">all ({{ job_summary.total_tasks }})</a> |
+      <a id="show-running">running ({{ job_summary.running_tasks }})</a> |
+      <a id="show-failed">failed ({{ job_summary.failed_tasks }})</a> |
+      <a id="show-successful">successful ({{ job_summary.succeeded_tasks }})</a> |
+      <a id="show-timedout">timed out ({{ job_summary.timedout_tasks }})</a>
     </div>
     <table class="table sortable" id="tasks">
     <thead>
@@ -202,6 +213,8 @@ $(document).ready(function() {
               class="task-running"
             {% elif task.status == 0 %}
               class="task-successful"
+            {% elif task.status == -9 %}
+              class="task-failed task-timedout"
             {% else %}
               class="task-failed"
             {% endif %}>
@@ -229,7 +242,7 @@ $(document).ready(function() {
       </tbody>
     </table>
     """)
-    return template.render(tasks=tasks)
+    return template.render(tasks=tasks, job_summary=job_summary)
 
   def render_container(self, body):
     """ Render the "body" HTML inside of a bootstrap container page. """
