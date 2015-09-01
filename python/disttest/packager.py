@@ -22,9 +22,11 @@ class Packager:
         else:
             self.__ignore = ignore
         self.__test_jars = []
+        self.__test_dirs = []
         self.__jars = []
 
-    def __mkdirs_recursive(self, path):
+    @staticmethod
+    def __mkdirs_recursive(path):
         try:
             os.makedirs(path)
             logger.debug("Created directory %s", path)
@@ -46,7 +48,7 @@ class Packager:
 
         # Create the parent directory in the output root if it doesn't exist
         parent_output_path = os.path.dirname(output_path)
-        self.__mkdirs_recursive(parent_output_path)
+        Packager.__mkdirs_recursive(parent_output_path)
 
         # Copy both files and directories (recursively)
         if os.path.isfile(input_path):
@@ -68,6 +70,17 @@ class Packager:
             for artifact in module.source_artifacts:
                 self.__copy(module.root, artifact)
                 self.__jars.append(artifact)
+
+        # Create some target subdirectories needed by some tests, this happens via antrun in Hadoop
+        paths = ("target/test/data", "target/test-dir", "target/log")
+        for module in self.__maven_project.modules:
+            for p in paths:
+                input_abspath = os.path.join(module.root, p)
+                module_relpath = os.path.relpath(module.root, self.__project_root)
+                dir_relpath = os.path.join(module_relpath, p)
+                # Only create if it already exists in source, save us some trouble
+                if os.path.exists(input_abspath):
+                    self.__test_dirs += [dir_relpath]
 
         logger.info("Packaged %s modules to output directory %s",\
                     len(self.__maven_project.modules), self.__output_root)
@@ -103,6 +116,11 @@ class Packager:
             lines.append(Packager.get_unzip_cmd(self.__project_root, jar, "test-classes"))
         for jar in self.__jars:
             lines.append(Packager.get_unzip_cmd(self.__project_root, jar, "classes"))
+
+        # Create some extra empty directories
+        # Isolate can't handle empty directories, so need to do this in the script.
+        for d in self.__test_dirs:
+            lines.append("mkdir -p %s" % d)
 
         # Write the unpack script
         outpath = os.path.join(self.__output_root, name)
