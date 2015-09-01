@@ -100,6 +100,7 @@ M2_REPO=$(pwd)/.m2/repository mvn surefire:test -f $1 -Dtest=$2
             pprint.pprint(isolate, stream=out)
 
         # Write the per-test json files for isolate's batcharchive command
+        num_written = 0
         for module in self.maven_project.modules:
             rel_pom = os.path.relpath(module.pom, self.maven_project.project_root)
             if len(module.test_artifacts) == 0:
@@ -122,5 +123,6 @@ M2_REPO=$(pwd)/.m2/repository mvn surefire:test -f $1 -Dtest=$2
                 }
                 with open(filename, "wt") as out:
                     json.dump(gen, out)
+                num_written += 1
 
-        logger.info("Success! Generated isolate descriptions in %s", self.output_dir)
+        logger.info("Success! Generated %s isolate descriptions in %s", num_written, self.output_dir)
