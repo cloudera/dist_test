@@ -43,7 +43,12 @@ class DistTestServer(object):
       <div class="filler red" style="width: %.2f%%;"></div>
     </div>""" % (
       success_percent, fail_percent)
-    body += self._render_tasks(tasks)
+    body += """
+    <p>
+    <a href="/trace?job_id=%s">Trace view</a>
+    </p>
+    """ % (job_id)
+    body += self._render_tasks(tasks, job_summary)
     return self.render_container(body)
 
   @staticmethod
