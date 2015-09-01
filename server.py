@@ -6,6 +6,7 @@ import dist_test
 import logging
 import os
 from jinja2 import Template
+import urllib
 import simplejson
 import StringIO
 import gzip
@@ -23,7 +24,8 @@ class DistTestServer(object):
     stats = self.task_queue.stats()
     body = "<h1>Stats</h1>\n" + self._render_stats(stats)
     recent_tasks = self.results_store.fetch_recent_task_rows()
-    body += "<h1>Recent tasks</h1>\n" + self._render_tasks(recent_tasks, None)
+    summary = self._summarize_tasks(tasks)
+    body += "<h1>Recent tasks</h1>\n" + self._render_tasks(recent_tasks, summary)
     return self.render_container(body)
 
   @cherrypy.expose
@@ -47,7 +49,7 @@ class DistTestServer(object):
     <p>
     <a href="/trace?job_id=%s">Trace view</a>
     </p>
-    """ % (job_id)
+    """ % (urllib.quote(job_id))
     body += self._render_tasks(tasks, job_summary)
     return self.render_container(body)
 
@@ -158,10 +160,6 @@ class DistTestServer(object):
         t['stdout_link'] = self.results_store.generate_output_link(t, "stdout")
       if t['stderr_abbrev']:
         t['stderr_link'] = self.results_store.generate_output_link(t, "stderr")
-
-    # Generate an empty job summary if we weren't passed one
-    if job_summary is None:
-      job_summary = self._summarize_tasks([])
 
     template = Template("""
       <script>
