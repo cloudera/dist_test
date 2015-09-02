@@ -46,7 +46,7 @@ class DistTestServer(object):
     </div>""" % (
       success_percent, fail_percent)
     body += """
-    <p>
+    <p style="clear: both;">
     <a href="/trace?job_id=%s">Trace view</a>
     </p>
     """ % (urllib.quote(job_id))
