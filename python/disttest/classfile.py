@@ -22,7 +22,8 @@ See classfile format reference material at:
 
     def __init__(self, classfile):
         self.classfile = classfile
-        assert classfile.endswith(".class")
+        if not classfile.endswith(".class"):
+            raise Exception("File %s is not a java classfile" % classfile)
         # Determine the name-with-package from the folder layout
         self.name = Classfile.__determine_qualified_name(self.classfile)
         # Parse the classfile

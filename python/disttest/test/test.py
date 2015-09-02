@@ -1,5 +1,6 @@
 import os
 import shutil
+import shlex, subprocess
 import tempfile
 import unittest
 
@@ -7,19 +8,34 @@ from .. import mavenproject, packager, isolate, classfile
 
 TEST_RESOURCES = os.path.join(os.path.abspath(os.path.dirname(__file__)), "test-resources")
 
-TEST_PROJECT_PATH = "/home/andrew/dev/hadoop/cdh5-2.6.0_dev"
+TEST_PROJECT_PATH = os.path.join(TEST_RESOURCES, "MultiModuleTestProject")
+
+def setUpModule():
+    # Build the test project
+    cmd = "mvn -q package -DskipTests"
+    print "Building test maven project at %s" % TEST_PROJECT_PATH
+    args = shlex.split(cmd)
+    p = subprocess.Popen(args, cwd=TEST_PROJECT_PATH)
+    p.wait()
+    if p.returncode != 0:
+        raise Exception("Failed to build Maven project")
 
 class TestMavenProject(unittest.TestCase):
 
     def test_MavenProject(self):
         project = mavenproject.MavenProject(TEST_PROJECT_PATH)
         for module in project.modules:
-            if "hadoop-kms" in module.root:
-                print module.root
-                for c in module.test_classes:
-                    print c.name
-                self.assertEquals(1, len(module.test_artifacts))
-                self.assertTrue("test-sources.jar" in module.test_artifacts[0])
+            if "module-two" in module.root:
+                # Expect a test-sources.jar and a tests.jar
+                self.assertEquals(2, len(module.test_artifacts))
+                found = [False, False]
+                for artifact in module.test_artifacts:
+                    if artifact.endswith("test-sources.jar"):
+                        found[0] = True
+                    elif artifact.endswith("tests.jar"):
+                        found[1] = True
+                self.assertTrue(found[0])
+                self.assertTrue(found[1])
 
 class TestFilters(unittest.TestCase):
 
@@ -33,7 +49,7 @@ class TestFilters(unittest.TestCase):
         noabs_filter = mavenproject.NoAbstractClassFilter()
         # Test some abstract and concrete classes
         num_files = 0
-        for root, dirs, files in os.walk(TEST_RESOURCES, "classes/"):
+        for root, dirs, files in os.walk(os.path.join(TEST_RESOURCES, "classes/")):
             for f in files:
                 fullpath = os.path.realpath(os.path.join(root, f))
                 clazz = classfile.Classfile(fullpath)
