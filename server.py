@@ -23,9 +23,8 @@ class DistTestServer(object):
   def index(self):
     stats = self.task_queue.stats()
     body = "<h1>Stats</h1>\n" + self._render_stats(stats)
-    recent_tasks = self.results_store.fetch_recent_task_rows()
-    summary = self._summarize_tasks(tasks)
-    body += "<h1>Recent tasks</h1>\n" + self._render_tasks(recent_tasks, summary)
+    recent_jobs = self.results_store.fetch_recent_job_rows()
+    body += self._render_jobs(recent_jobs)
     return self.render_container(body)
 
   @cherrypy.expose
@@ -46,7 +45,7 @@ class DistTestServer(object):
     </div>""" % (
       success_percent, fail_percent)
     body += """
-    <p>
+    <p style="clear: both;">
     <a href="/trace?job_id=%s">Trace view</a>
     </p>
     """ % (urllib.quote(job_id))
@@ -153,6 +152,37 @@ class DistTestServer(object):
         Idle slaves: {{ stats['current-waiting'] }}
       </code>""")
     return template.render(stats=stats)
+
+
+  def _render_jobs(self, jobs):
+    stats = {}
+    stats["total_jobs"] = len(jobs)
+    stats["total_tasks"] = sum([j["num_tasks"] for j in jobs])
+
+    template = Template("""
+    <h1>Recent Jobs (last 12hrs)</h1>
+    <br style="clear: both;"/>
+    <table class="table" id="jobs">
+    <thead>
+      <tr>
+        <th>Job ({{ stats.total_jobs |e }}) </th>
+        <th>Submitted</th>
+        <th>Num Tasks ({{ stats.total_tasks |e }})</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for job in jobs %}
+        <tr>
+          <td><a href="/job?job_id={{ job.job_id |urlencode }}">{{ job.job_id |e }}</a></td>
+          <td>{{ job.submit_timestamp |e }}</td>
+          <td>{{ job.num_tasks |e }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    """)
+    return template.render(jobs=jobs, stats=stats)
+
 
   def _render_tasks(self, tasks, job_summary):
     for t in tasks:

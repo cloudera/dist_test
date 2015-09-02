@@ -250,12 +250,17 @@ class ResultsStore(object):
     k.key = "%s.%s" % (task_row['task_id'], output)
     return k.generate_url(expiry)
 
-  def fetch_recent_task_rows(self):
+  def fetch_recent_job_rows(self):
     c = self._execute_query("""
-      SELECT * FROM dist_test_tasks WHERE
-        submit_timestamp > now() - interval 1 hour
-      ORDER BY submit_timestamp DESC
-      LIMIT 1000""")
+        select jobs.job_id,
+               min(submit_timestamp) as submit_timestamp,
+               count(*) as num_tasks from dist_test_tasks
+        join (select distinct (job_id) from dist_test_tasks
+              where submit_timestamp > now() - interval 1 day)
+        jobs on jobs.job_id = dist_test_tasks.job_id
+        group by jobs.job_id
+        order by submit_timestamp desc;
+    """)
     return c.fetchall()
 
   def fetch_task_rows_for_job(self, job_id):

@@ -7,7 +7,7 @@ done
 virtualenv --relocatable slave-env
 
 virtualenv server-env
-for package in jinja2 cherrypy beanstalkc MySQL-python boto PyYAML; do
+for package in jinja2 cherrypy beanstalkc MySQL-python boto PyYAML simple_json; do
   ./server-env/bin/pip install $package
 done
 virtualenv --relocatable server-env
