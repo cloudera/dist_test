@@ -7,7 +7,7 @@ from .. import mavenproject, packager, isolate, classfile
 
 TEST_RESOURCES = os.path.join(os.path.abspath(os.path.dirname(__file__)), "test-resources")
 
-TEST_PROJECT_PATH = "/home/andrew/dev/hadoop/cdh5-2.6.0_5.4.0"
+TEST_PROJECT_PATH = "/home/andrew/dev/hadoop/cdh5-2.6.0_dev"
 
 class TestMavenProject(unittest.TestCase):
 
