@@ -73,6 +73,7 @@ M2_REPO=$(pwd)/.m2/repository mvn --no-snapshot-updates surefire:test --file $1 
         self.output_dir = output_dir
         self.maven_project = mavenproject.MavenProject(project_root)
         self.packager = packager.Packager(self.maven_project, self.output_dir)
+        self.isolated_files = []
 
     def package(self):
         self.packager.package_target_dirs()
@@ -122,6 +123,7 @@ M2_REPO=$(pwd)/.m2/repository mvn --no-snapshot-updates surefire:test --file $1 
                 }
                 with open(filename, "wt") as out:
                     json.dump(gen, out)
+                    self.isolated_files.append(filename)
                 num_written += 1
 
         logger.info("Success! Generated %s isolate descriptions in %s", num_written, self.output_dir)
