@@ -14,20 +14,29 @@ class Module:
         self.test_classes = []
         self.source_artifacts = []
         self.test_artifacts = []
+        self.name = os.path.basename(self.root)
+
+class NotMavenProjectException(Exception):
+    pass
+
+class ModuleNotFoundException(Exception):
+    pass
 
 class MavenProject:
 
-    def __init__(self, project_root):
+    def __init__(self, project_root, include_modules=None):
         # Normalize the path
         if not project_root.endswith("/"):
             project_root += "/"
         # Validate some basic expectations
         if not os.path.isdir(project_root):
-            raise Exception("Path " + project_root + "is not a directory!")
+            raise NotMavenProjectException("Path " + project_root + "is not a directory!")
         if not os.path.isfile(os.path.join(project_root, "pom.xml")):
-            raise Exception("No pom.xml file found in %s, is this a Maven project?" % project_root)
+            raise NotMavenProjectException("No pom.xml file found in %s, is this a Maven project?" % project_root)
         self.project_root = project_root
-        self.modules = []
+        self.modules = [] # All modules in the project
+        self.included_modules = [] # Modules that match the include_modules filter
+        self.__include_modules = include_modules
         self.__filters = [PotentialTestClassNameFilter(), NoAbstractClassFilter()]
         self._walk()
 
@@ -37,13 +46,25 @@ class MavenProject:
             if "pom.xml" in files and "target" in dirs:
                 self.modules.append(Module(root))
 
-        # For each module, look for test classes within target dir
-        for module in self.modules:
+        # If include_modules was specified, filter the found module list and check for missing modules
+        self.included_modules = self.modules
+        if self.__include_modules is not None:
+            # Filter to just the specified modules
+            self.included_modules = [m for m in self.modules if m.name in self.__include_modules]
+            # Mismatch in length means we're missing some
+            if len(self.included_modules) != len(self.__include_modules):
+                for m in self.included_modules:
+                    self.__include_modules.remove(m.name)
+                assert len(self.__include_modules) > 0
+                raise ModuleNotFoundException("Could not find specified modules: " + " ".join(self.__include_modules))
+
+        # For each included module, look for test classes within target dir
+        for module in self.included_modules:
             logger.debug("Traversing module %s", module.root)
             for root, dirs, files in os.walk(os.path.join(module.root, "target")):
                 abs_files = [os.path.join(root, f) for f in files]
                 # Make classfile objects for everything that's a valid class
-                classfiles = self.__build_classfiles(abs_files)
+                classfiles = self.__get_classfiles(abs_files)
                 # Apply classfile filters
                 for fil in self.__filters:
                     classfiles = [c for c in classfiles if fil.accept(c)]
@@ -58,18 +79,20 @@ class MavenProject:
                 abs_path = os.path.join(target_root, entry)
                 if os.path.isfile(abs_path):
                     if entry.endswith("-test-sources.jar") or entry.endswith("-tests.jar"):
-                        module.test_artifacts.append(abs_path)
+                        # Do not need test jars from a module if we're not running its tests
+                        if module in self.included_modules:
+                            module.test_artifacts.append(abs_path)
                     elif entry.endswith(".jar") and not entry.endswith("-sources.jar") and not entry.endswith("-javadoc.jar"):
                         module.source_artifacts.append(abs_path)
 
         num_modules = len(self.modules)
         num_classes = reduce(lambda x,y: x+y,\
-                             [len(m.test_classes) for m in self.modules])
+                             [0] + [len(m.test_classes) for m in self.modules])
         logging.info("Found %s modules with %s test classes in %s",\
                      num_modules, num_classes, self.project_root)
 
     @staticmethod
-    def __build_classfiles(files):
+    def __get_classfiles(files):
         classfiles = []
         for f in files:
             # Must be a file

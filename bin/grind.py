@@ -17,28 +17,43 @@ logger = logging.getLogger(__name__)
 
 
 class Config:
+    """Config class that uses ConfigParser"""
+
+    __section = "grind"
+    __defaults = {
+        "isolate_server": "http://a1228.halxg.cloudera.com:4242",
+        "isolate_path": os.path.join("~", "dev", "go", "bin", "isolate"),
+        "dist_test_client_path": os.path.join("~", "dev", "dist_test", "client.py"),
+    }
 
     def __init__(self):
         # Load up the defaults
         FILENAME = ".grind.cfg"
         home = os.environ['HOME']
         self.location = os.path.join(home, FILENAME)
-        defaults = {
-            "isolate_server": "http://a1228.halxg.cloudera.com:4242",
-            "isolate_path": os.path.join(home, "dev", "go", "bin", "isolate"),
-            "dist_test_client_path": os.path.join(home, "dev", "dist_test", "client.py"),
-        }
-        self.config = ConfigParser.SafeConfigParser(defaults)
+        self.config = ConfigParser.SafeConfigParser()
 
     def read_config(self):
         if not os.path.exists(self.location):
             raise Exception("No config file found at %s, try --generate first?" % self.location)
         if not os.path.isfile(self.location):
             raise Exception("Config location %s is not a file" % self.location)
-        # Reset the config and read it in
-        self.config = ConfigParser.SafeConfigParser()
+        # Read config from file
         self.config.read(self.location)
         logging.info("Read config from location %s", self.location)
+        # Validate
+        for key in self.__defaults.keys():
+            self.config.get(Config.__section, key)
+        # Translate to class members for nicer consumption
+        for k in ["isolate_path", "dist_test_client_path"]:
+            self.__dict__[k] = os.path.expanduser(self.config.get(Config.__section, k))
+        for k in ["isolate_server"]:
+            self.__dict__[k] = self.config.get(Config.__section, k)
+
+    def load_defaults(self):
+        self.config.add_section(Config.__section)
+        for k,v in Config.__defaults.iteritems():
+            self.config.set(Config.__section, k, v)
 
     def write_config(self, outfile):
         self.config.write(outfile)
@@ -57,13 +72,15 @@ class ConfigRunner:
                             help="Print a sample configuration file to stdout.")
 
     def run(self):
+        config = Config()
         # If generate, print the default config
         if self.args.generate:
-            self.write_config(sys.stdout)
+            config.load_defaults()
+            config.write_config(sys.stdout)
             return
         # Else, load and print the found config file
-        self.read_config()
-        self.write_config(sys.stdout)
+        config.read_config()
+        config.write_config(sys.stdout)
 
 
 class TestRunner:
@@ -82,12 +99,13 @@ class TestRunner:
     def add_subparser(subparsers):
         parser = subparsers.add_parser('test', help="Running tests")
         # Module related
-        # TODO: implement these!
         parser.add_argument('-l', '--list-modules',
                             action='store_true',
+                            dest="list_modules",
                             help="Path to file with the list of tests to run, one per line.")
         parser.add_argument('-m', '--module',
                             action='append',
+                            dest='include_modules',
                             help="Run tests for a module. Can be specified multiple times.")
         # Patterns
         # TODO: implement these!
@@ -101,13 +119,27 @@ class TestRunner:
         # Util
         parser.add_argument('--leak-temp',
                             action='store_true',
+                            dest="leak_temp",
                             help="Leak the temp directory with intermediate files")
         parser.add_argument('--dry-run',
                             action='store_true',
+                            dest="dry_run",
                             help="Do not actually run tests.")
 
     def run(self):
-        i = isolate.Isolate(self.project_dir, self.output_dir)
+        if self.args.list_modules:
+            i = isolate.Isolate(self.project_dir, self.output_dir)
+            print "Found %s modules in directory %s" \
+                    % (len(i.maven_project.modules), i.maven_project.project_root)
+            for module in i.maven_project.modules:
+                print "\t" + module.name
+        else:
+            self.run_tests()
+
+    def run_tests(self):
+        i = isolate.Isolate(self.project_dir,\
+                            self.output_dir,\
+                            include_modules=self.args.include_modules)
         # Enumerate tests and package test dependencies
         i.package()
         # Generate one task description json file per test
@@ -122,11 +154,8 @@ class TestRunner:
         hashes_file = os.path.join(self.output_dir, "hashes.json")
         cmd = cmd % (self.config.isolate_path, hashes_file)
         logger.debug("Invoking %s", cmd)
-        args = shlex.split(cmd)
-        args += i.isolated_files
-        p = subprocess.Popen(args, env=isolate_env)
+        p = subprocess.Popen(shlex.split(cmd) + i.isolated_files, env=isolate_env)
         p.wait()
-
         if p.returncode != 0:
             raise Exception("isolate batcharchive failed")
 
@@ -136,16 +165,17 @@ class TestRunner:
         TestRunner.isolate_hashes_to_tasks(hashes_file, tasks_file)
 
         # Call the dist_test client
-        if args.dry_run:
+        if self.args.dry_run:
             logging.info("Dry run, skipping test submission")
         else:
             cmd = "%s submit %s" % (self.config.dist_test_client_path, tasks_file)
             logger.debug("Calling %s", cmd)
-            p = subprocess.Popen(args, env=isolate_env)
+            p = subprocess.Popen(shlex.split(cmd), env=isolate_env)
+            p.wait()
             if p.returncode != 0:
                 raise Exception("dist_test client submit failed")
 
-        logging.info("Finished running tests!")
+        logging.info("Finished!")
 
     def cleanup(self):
         if self.args.leak_temp:
@@ -173,7 +203,7 @@ class TestRunner:
 
         logger.debug("Reading input json file with isolate hashes from %s", infile)
         with open(infile, "r") as i:
-            inmap = json.load(open(i, "r"))
+            inmap = json.load(i)
             for k,v in inmap.iteritems():
                 tasks += [{"isolate_hash" : str(v),
                         "description" : str(k),
@@ -217,8 +247,8 @@ def main():
 
 
 def config_subcommand(args):
-    config = ConfigRunner(args)
-    config.run()
+    c = ConfigRunner(args)
+    c.run()
 
 
 def test_subcommand(args):

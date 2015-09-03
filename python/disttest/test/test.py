@@ -37,6 +37,33 @@ class TestMavenProject(unittest.TestCase):
                 self.assertTrue(found[0])
                 self.assertTrue(found[1])
 
+    def test_IncludeModules(self):
+        include_lists = [
+            [],
+            ["module-two"],
+            ["module-one", "module-three"],
+            ["module-one", "module-two", "module-three"],
+        ]
+
+        for l in include_lists:
+            project = mavenproject.MavenProject(TEST_PROJECT_PATH, l)
+            self.assertEquals(len(l), len(project.included_modules))
+            for m in project.included_modules:
+                self.assertTrue(m.name in l,
+                           "Found unexpected module %s for include list %s" % (m.name, l))
+
+        invalid_lists = [
+            ["blahmodule"],
+            ["blahmodule", "module-two"],
+        ]
+
+        for l in invalid_lists:
+            try:
+                project = mavenproject.MavenProject(TEST_PROJECT_PATH, l)
+                self.fail("Should have failed to find nonexistent module list " + l)
+            except mavenproject.ModuleNotFoundException:
+                pass
+
 class TestFilters(unittest.TestCase):
 
     def setUp(self):
