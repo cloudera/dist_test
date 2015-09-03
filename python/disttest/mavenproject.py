@@ -18,10 +18,14 @@ class Module:
 class MavenProject:
 
     def __init__(self, project_root):
-        if not os.path.isdir(project_root):
-            raise Exception("Path " + project_root + "is not a directory!")
+        # Normalize the path
         if not project_root.endswith("/"):
             project_root += "/"
+        # Validate some basic expectations
+        if not os.path.isdir(project_root):
+            raise Exception("Path " + project_root + "is not a directory!")
+        if not os.path.isfile(os.path.join(project_root, "pom.xml")):
+            raise Exception("No pom.xml file found in %s, is this a Maven project?" % project_root)
         self.project_root = project_root
         self.modules = []
         self.__filters = [PotentialTestClassNameFilter(), NoAbstractClassFilter()]
