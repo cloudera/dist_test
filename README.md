@@ -10,54 +10,51 @@ Dependencies
 * Python 2.7+
 * Java
 * A local dev environment with your project successfully built
-* swarming-client, which has isolate. Use Todd's fork, which has some speed improvements:
+* Luci, which is an Isolate compatible rewrite in Go (much faster than the original Python implementation). Follow the README for directions as to installing Luci. If you haven't installed  a Go program from source before, this can be involved.
 
-        http://github.mtv.cloudera.com/todd/swarming.client
+        https://github.com/luci/luci-go
 
-* dist_test, which has the client submit script, along with the server and build bot:
+* dist_test, which is has a client for submitting to our internal distributed test infrastructure:
 
         http://github.mtv.cloudera.com/todd/dist_test
 
 Example usage
 -------------
 
-1. Check out all the repos specified above
-1. Build your project.
-1. Generate the isolate file for your tests by pointing the `generate_all.sh` script at your source repo. It looks for normal and test jars under target folders.
+1. Fulfil the dependencies listed above.
+1. Add grind bin folder to your `$PATH`:
 
-        cd hadoop-isolate
-        ./generate_all.sh ~/dev/hadoop/trunk/
-        # Output like this
-        INFO:root:Looking for compiled jars in source repo...
-        INFO:root:Finding dependencies with maven...
-        INFO:root:Writing isolate files...
-        INFO:root:Success! Generated isolate descriptions in /tmp/tmp.JPIqTdTg4j
-        /tmp/tmp.JPIqTdTg4j/*.json
+        $ export PATH=/path/to/grind/bin:$PATH
 
+1. Set up the grind configuration, using `grind config`. This is used to find the above project dependencies and our internal isolate server.
 
-1. The last line says where the isolate files were generated, one per unit test. We need to "archive" the dependencies specified in these files to the isolate server. Currently, Todd is running a server on appspot. Let's start by authenticating and pointing ourselves at this server:
+        $ grind config > ~/.grind.cfg
+        $ grind config
+        INFO:root:Read config from location /home/andrew/.grind.cfg
+        [grind]
+        isolate_server = http://a1228.halxg.cloudera.com:4242
+        dist_test_client_path = ~/dev/dist_test/client.py
+        isolate_path = ~/dev/go/bin/isolate
 
-        cd swarming.client
-        export ISOLATE_SERVER=https://todd-isolate-2.appspot.com
-        python auth.py login --service=https://todd-isolate-2.appspot.com
+1. cd to your project and build it, e.g.
 
-1. Now, let's run `isolate.py batcharchive` to archive all of our test tasks in one go. This can take a while. Note that we specify an outfile to write a unique hash per isolate task.
+        $ cd ~/dev/hadoop/trunk
+        $ mvn clean package install -DskipTests....
 
-        ./isolate.py batcharchive --dump-json=/tmp/hashes.json -- /tmp/tmp.JPIqTdTg4j/*.json
+1. List the available modules, if it's a multi-module project
 
-1. Now, we transmute the hashes file into another json file used by the `dist_test` client to actually run the tests
+        $ grind test --list-modules
+        ...
+        hadoop-hdfs
+        hadoop-common
+        ...
 
-        cd hadoop-isolate
-        ./parse_for_submit.py /tmp/hashes.json /tmp/run.json
+1. Run the tests for some modules
 
-1. Use the client to run the tasks, watch the magic happen.
+        $ grind test -m hadoop-hdfs -m hadoop-common
 
-        cd dist_test
-        ./submit.py /tmp/run.json
+1. Run the tests for specific tests within a module
 
-Tips and tricks
----------------
+        $ grind test -m hadoop-hdfs -i TestBalancer\* -i TestDFSClient -i Test\*CLI
 
-If you want to run a single test to get started, check out the `isolate archive` command. It doesn't generate a hashes file, so you'll need to make your own json file suitable for usage with `submit.py`.
-
-Setting SWARMING_PROFILE=1 enables profiling for swarming, might help us find bottlenecks to optimize.
+See `grind test --help` for more advanced usage instructions.
