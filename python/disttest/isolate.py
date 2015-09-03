@@ -68,10 +68,13 @@ M2_REPO=$(pwd)/.m2/repository mvn --no-snapshot-updates surefire:test --file $1 
 
     __ISOLATE_NAME = """disttest.isolate"""
 
-    def __init__(self, project_root, output_dir, include_modules=None):
+    def __init__(self, project_root, output_dir, include_modules=None, include_patterns=None, exclude_patterns=None):
         logger.info("Using output directory " + output_dir)
         self.output_dir = output_dir
-        self.maven_project = mavenproject.MavenProject(project_root, include_modules)
+        self.maven_project = mavenproject.MavenProject(project_root,
+                                                       include_modules=include_modules,
+                                                       include_patterns=include_patterns,
+                                                       exclude_patterns=exclude_patterns)
         self.packager = packager.Packager(self.maven_project, self.output_dir)
         self.isolated_files = []
 

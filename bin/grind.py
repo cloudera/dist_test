@@ -108,14 +108,16 @@ class TestRunner:
                             dest='include_modules',
                             help="Run tests for a module. Can be specified multiple times.")
         # Patterns
-        # TODO: implement these!
         parser.add_argument('-i', '--include-pattern',
                             action='append',
-                            help="Include pattern for unittests. Can be specified multiple times.")
+                            dest='include_patterns',
+                            help="Include pattern for test names." \
+                            + " Supports globbing. Can be specified multiple times.")
         parser.add_argument('-e', '--exclude-pattern',
                             action='append',
+                            dest='exclude_patterns',
                             help="Exclude pattern for unittests." \
-                            + "Takes precedence over include patterns. Can be specified multiple times.")
+                            + "Takes precedence over include patterns. Supports globbing. Can be specified multiple times.")
         # Util
         parser.add_argument('--leak-temp',
                             action='store_true',
@@ -137,9 +139,11 @@ class TestRunner:
             self.run_tests()
 
     def run_tests(self):
-        i = isolate.Isolate(self.project_dir,\
-                            self.output_dir,\
-                            include_modules=self.args.include_modules)
+        i = isolate.Isolate(self.project_dir,
+                            self.output_dir,
+                            include_modules=self.args.include_modules,
+                            include_patterns=self.args.include_patterns,
+                            exclude_patterns=self.args.exclude_patterns)
         # Enumerate tests and package test dependencies
         i.package()
         # Generate one task description json file per test
@@ -148,6 +152,12 @@ class TestRunner:
         # Set up required environment variables
         isolate_env = os.environ
         isolate_env["ISOLATE_SERVER"] = self.config.isolate_server
+
+        if len(i.isolated_files) == 0:
+            logger.error("No tests found for project %s!", self.project_dir)
+            logger.error("Include patterns: %s", self.args.include_patterns)
+            logger.error("Exclude patterns: %s", self.args.exclude_patterns)
+            sys.exit(2)
 
         # Invoke batcharchive on the generated files
         cmd = "%s batcharchive --dump-json=%s --"

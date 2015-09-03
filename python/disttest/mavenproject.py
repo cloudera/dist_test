@@ -1,5 +1,7 @@
 import os
 import logging
+import fnmatch
+import re
 
 import classfile
 
@@ -24,7 +26,7 @@ class ModuleNotFoundException(Exception):
 
 class MavenProject:
 
-    def __init__(self, project_root, include_modules=None):
+    def __init__(self, project_root, include_modules=None, include_patterns=None, exclude_patterns=None):
         # Normalize the path
         if not project_root.endswith("/"):
             project_root += "/"
@@ -37,7 +39,16 @@ class MavenProject:
         self.modules = [] # All modules in the project
         self.included_modules = [] # Modules that match the include_modules filter
         self.__include_modules = include_modules
+        # Default filters to find test classes
         self.__filters = [PotentialTestClassNameFilter(), NoAbstractClassFilter()]
+        # Additional user-specified include and exclude patterns
+        # Prepend because these are likely more selective than the default filters
+        if include_patterns is not None:
+            include_filter = IncludePatternsFilter(include_patterns)
+            self.__filters.insert(0, include_filter)
+        if exclude_patterns is not None:
+            exclude_filter = ExcludePatternsFilter(exclude_patterns)
+            self.__filters.insert(0, exclude_filter)
         self._walk()
 
     def _walk(self):
@@ -136,3 +147,25 @@ class NoAbstractClassFilter(ClassfileFilter):
     @staticmethod
     def accept(clazz):
         return not (clazz.is_interface() or clazz.is_abstract())
+
+class IncludePatternsFilter(ClassfileFilter):
+    def __init__(self, patterns = None):
+        self.patterns = []
+        self.__reobjs = []
+        if patterns is not None:
+            self.patterns = patterns
+            regexes = [fnmatch.translate(p) for p in patterns]
+            self.__reobjs = [re.compile(r) for r in regexes]
+
+    def accept(self, clazz):
+        matched = False
+        for reobj in self.__reobjs:
+            if reobj.match(clazz.classname) is not None:
+                matched = True
+                break
+        return matched
+
+class ExcludePatternsFilter(IncludePatternsFilter):
+    def accept(self, clazz):
+        """Exclude is the opposite of the include filter."""
+        return not IncludePatternsFilter.accept(self, clazz)

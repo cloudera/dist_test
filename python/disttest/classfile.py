@@ -25,13 +25,22 @@ See classfile format reference material at:
         if not classfile.endswith(".class"):
             raise Exception("File %s is not a java classfile" % classfile)
         # Determine the name-with-package from the folder layout
-        self.name = Classfile.__determine_qualified_name(self.classfile)
+        self.classname = Classfile.__determine_classname(self.classfile)
+        self.name = Classfile.__determine_qualified_name(self.classfile, self.classname)
         # Parse the classfile
         with open(classfile, "rb") as f:
             self.__parse(f)
 
     @staticmethod
-    def __determine_qualified_name(path):
+    def __determine_classname(path):
+        # Trim off ".class" from the basename to get name of class
+        filename = os.path.basename(path)
+        assert filename.endswith(".class")
+        classname = filename[:-len(".class")]
+        return classname
+
+    @staticmethod
+    def __determine_qualified_name(path, classname):
         # We're looking for a folder named "classes" or "test-classes"
         # See: https://docs.oracle.com/javase/tutorial/java/package/managingfiles.html
         components = Classfile.__splitall(path)[:-1]
@@ -42,11 +51,6 @@ See classfile format reference material at:
                 break
         if package is None:
             raise Exception("Could not determine package name of file " + path)
-        # Trim off ".class" from the basename to get name of class
-        filename = os.path.basename(path)
-        assert filename.endswith(".class")
-        classname = filename[:-len(".class")]
-        # Join together. Handles when there is an empty package.
         return ".".join([package, classname])
 
     @staticmethod

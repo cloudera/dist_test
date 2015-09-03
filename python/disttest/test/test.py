@@ -64,6 +64,40 @@ class TestMavenProject(unittest.TestCase):
             except mavenproject.ModuleNotFoundException:
                 pass
 
+    def test_IncludeExcludePatterns(self):
+        # list of (([includes], [excludes]), [results])
+        expected = [
+            ((["*"], None),
+                ["TestLinkedListReversal", "TestHelloWorld", "AppTest"]),
+            ((["Test*"], None),
+                ["TestLinkedListReversal", "TestHelloWorld"]),
+            ((["*Linked*"], None),
+                ["TestLinkedListReversal"]),
+            ((["*Test"], None),
+                ["AppTest"]),
+            ((None, ["Test*"]),
+                ["AppTest"]),
+            ((None, ["AppTest"]),
+                ["TestLinkedListReversal", "TestHelloWorld"]),
+            ((None, ["*"]),
+                []),
+            ((["Test*"], ["*Reversal"]),
+                ["TestHelloWorld"]),
+            ((["Test*"], ["Test*"]),
+                []),
+        ]
+
+        for ((include,exclude), results) in expected:
+            print include, exclude, results
+            project = mavenproject.MavenProject(TEST_PROJECT_PATH, include_patterns=include, exclude_patterns=exclude)
+            classes = []
+            for module in project.included_modules:
+                for test in module.test_classes:
+                    classes.append(test.classname)
+            classes.sort()
+            results.sort()
+            self.assertEqual(results, classes)
+
 class TestFilters(unittest.TestCase):
 
     def setUp(self):
