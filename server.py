@@ -2,6 +2,7 @@
 
 import base64
 import cherrypy
+import datetime
 import dist_test
 import logging
 import os
@@ -31,24 +32,8 @@ class DistTestServer(object):
   def job(self, job_id):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
     job_summary = self._summarize_tasks(tasks)
-    if job_summary['total_tasks'] > 0:
-      success_percent = job_summary['succeeded_tasks'] * 100 / float(job_summary['total_tasks'])
-      fail_percent = job_summary['failed_tasks'] * 100 / float(job_summary['total_tasks'])
-    else:
-      success_percent = 0
-      fail_percent = 0
-    body = "<h1>Job</h1>\n"
-    body += """
-    <div class="progress-bar">
-      <div class="filler green" style="width: %.2f%%;"></div>
-      <div class="filler red" style="width: %.2f%%;"></div>
-    </div>""" % (
-      success_percent, fail_percent)
-    body += """
-    <p style="clear: both;">
-    <a href="/trace?job_id=%s">Trace view</a>
-    </p>
-    """ % (urllib.quote(job_id))
+    body = ""
+    body += self._render_job_header(job_id, job_summary)
     body += self._render_tasks(tasks, job_summary)
     return self.render_container(body)
 
@@ -142,6 +127,21 @@ class DistTestServer(object):
     result['failed_tasks'] = len([1 for t in tasks if t['status'] is not None and t['status'] != 0])
     result['succeeded_tasks'] = len([1 for t in tasks if t['status'] == 0])
     result['timedout_tasks'] = len([1 for t in tasks if t['status'] == -9])
+    result['submit_time'] = min([t["submit_timestamp"] for t in tasks])
+
+    # Determine job state: if it's finished, how long its been running
+
+    result['status'] = "running"
+    result['finish_time'] = None
+    stop = datetime.datetime.now()
+    if result['total_tasks'] == result['finished_tasks']:
+      result['status'] = "finished"
+      result['finish_time'] = max([t["complete_timestamp"] for t in tasks])
+      stop = result['finish_time']
+
+    runtime = stop - result["submit_time"]
+    result['runtime'] = runtime
+
     return result
 
   def _render_stats(self, stats):
@@ -183,6 +183,41 @@ class DistTestServer(object):
     """)
     return template.render(jobs=jobs, stats=stats)
 
+  def _render_job_header(self, job_id, job_summary):
+    if job_summary['total_tasks'] > 0:
+      success_percent = job_summary['succeeded_tasks'] * 100 / float(job_summary['total_tasks'])
+      fail_percent = job_summary['failed_tasks'] * 100 / float(job_summary['total_tasks'])
+    else:
+      success_percent = 0
+      fail_percent = 0
+
+    job = {}
+    job["success_percent"] = "%.2f%%" % success_percent
+    job["fail_percent"] = "%.2f%%" % fail_percent
+    job["job_id"] = job_id
+
+    print job
+    template = Template("""
+    <h1> Job {{ job.job_id | e }} ({{ job_summary.status }}) </h1>
+    <div class="progress-bar">
+      <div class="filler green" style="width: {{ job.success_percent }};"></div>
+      <div class="filler red" style="width: {{ job.fail_percent }};"></div>
+    </div>
+
+    <br style="clear:both"/>
+    <p>
+    <strong>Submitted: {{ job_summary.submit_time }}</strong>
+    </p>
+    <p>
+    <strong>Runtime: {{ job_summary.runtime }}</strong>
+    </p>
+    <p>
+    <a href="/">Back to home</a>
+    <a href="/trace?job_id={{ job.job_id | urlencode }}">Trace view</a>
+    </p>
+
+    """)
+    return template.render(job=job, job_summary=job_summary)
 
   def _render_tasks(self, tasks, job_summary):
     for t in tasks:
@@ -190,6 +225,12 @@ class DistTestServer(object):
         t['stdout_link'] = self.results_store.generate_output_link(t, "stdout")
       if t['stderr_abbrev']:
         t['stderr_link'] = self.results_store.generate_output_link(t, "stderr")
+      if t['complete_timestamp'] is not None:
+        t['runtime'] = (t['complete_timestamp'] - t['start_timestamp']).total_seconds()
+      elif t['start_timestamp'] is not None:
+        t['runtime'] = (datetime.datetime.now() - t['start_timestamp']).total_seconds()
+      else:
+        t['runtime'] = None
 
     template = Template("""
       <script>
@@ -224,17 +265,14 @@ $(document).ready(function() {
     <table class="table sortable" id="tasks">
     <thead>
       <tr>
-        <th>submit time</th>
-        <th>start time</th>
-        <th>complete time</th>
-        <th>job</th>
-        <th>task</th>
+        <th>time(s)</th>
         <th>description</th>
         <th>hostname</th>
         <th>status</th>
-        <th>results archive</th>
+        <th>results</th>
         <th>stdout</th>
         <th>stderr</th>
+        <th>task</th>
       </tr>
     </thead>
     <tbody>
@@ -248,11 +286,7 @@ $(document).ready(function() {
             {% else %}
               class="task-failed"
             {% endif %}>
-          <td>{{ task.submit_timestamp |e }}</td>
-          <td>{{ task.start_timestamp |e }}</td>
-          <td>{{ task.complete_timestamp |e }}</td>
-          <td><a href="/job?job_id={{ task.job_id |urlencode }}">{{ task.job_id |e }}</a></td>
-          <td>{{ task.task_id |e }}</td>
+          <td>{{ task.runtime | int |e }}</td>
           <td>{{ task.description |e }}</td>
           <td>{{ task.hostname |e }}</td>
           <td>{{ task.status |e }}</td>
@@ -267,6 +301,7 @@ $(document).ready(function() {
               <a href="{{ task.stderr_link |e }}">download</a>
               {% endif %}
           </td>
+          <td>{{ task.task_id |e }}</td>
         </tr>
       {% endfor %}
       </tbody>
