@@ -118,7 +118,12 @@ class TestRunner:
                             dest='exclude_patterns',
                             help="Exclude pattern for unittests." \
                             + "Takes precedence over include patterns. Supports globbing. Can be specified multiple times.")
-        # Util
+        # Misc
+        parser.add_argument('-r', '--repeat',
+                            type=int,
+                            default=1,
+                            help="Number of times to run each test.")
+        # Util / debug
         parser.add_argument('--leak-temp',
                             action='store_true',
                             dest="leak_temp",
@@ -139,6 +144,9 @@ class TestRunner:
             self.run_tests()
 
     def run_tests(self):
+        if self.args.repeat <= 0:
+            raise Exception("--repeat must be greater than 0 (got %s)" % self.args.repeat)
+
         i = isolate.Isolate(self.project_dir,
                             self.output_dir,
                             include_modules=self.args.include_modules,
@@ -172,7 +180,7 @@ class TestRunner:
         # Parse the dumped json file and turn it into task descriptions
         # for dist_test
         tasks_file = os.path.join(self.output_dir, "run.json")
-        TestRunner.isolate_hashes_to_tasks(hashes_file, tasks_file)
+        self.isolate_hashes_to_tasks(hashes_file, tasks_file)
 
         # Call the dist_test client
         if self.args.dry_run:
@@ -194,8 +202,7 @@ class TestRunner:
             logger.debug("Removing temp directory %s", self.output_dir)
             shutil.rmtree(self.output_dir)
 
-    @staticmethod
-    def isolate_hashes_to_tasks(infile, outfile):
+    def isolate_hashes_to_tasks(self, infile, outfile):
         """Transform the hashes from the isolate batcharchive command into
         another JSON file for consumption by dist_test client that describes
         the set of tasks to run."""
@@ -212,9 +219,17 @@ class TestRunner:
         tasks = []
 
         logger.debug("Reading input json file with isolate hashes from %s", infile)
+        inmap = {}
         with open(infile, "r") as i:
             inmap = json.load(i)
-            for k,v in inmap.iteritems():
+
+        # Do a sanity calculation before generating task list,
+        # a giant repeat parameter could cause trouble.
+        if self.args.repeat * len(inmap.keys()) > 10000:
+            logger.error("More than 10,000 tasks generated (%s tasks repeated %s times)", len(inmap.keys()), self.args.repeat)
+            raise Exception("Too many tasks generated!")
+        for k,v in inmap.iteritems():
+            for i in xrange(self.args.repeat):
                 tasks += [{"isolate_hash" : str(v),
                         "description" : str(k),
                         "timeout": 300
