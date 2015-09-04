@@ -186,7 +186,10 @@ class TestRunner:
         if self.args.dry_run:
             logging.info("Dry run, skipping test submission")
         else:
-            cmd = "%s submit %s" % (self.config.dist_test_client_path, tasks_file)
+            cmd = "%s submit --name %s %s" % \
+                    (self.config.dist_test_client_path, \
+                     os.path.basename(self.project_dir), \
+                     tasks_file)
             logger.debug("Calling %s", cmd)
             p = subprocess.Popen(shlex.split(cmd), env=isolate_env)
             p.wait()
