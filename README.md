@@ -1,7 +1,7 @@
-Overview
+grind
 --------
 
-This is a set of scripts that assists in using [isolate](https://code.google.com/p/swarming/wiki/IsolateDesign) to package up JUnit tests to be run remotely, distributed.
+grind finds the tests in your Java Maven+Surefire+JUnit project, packages them up individually, and runs them distributed across a cluster. Empirically, running the 1700+ test classes in Hadoop has gone from multiple hours to about fifteen minutes by using grind.
 
 Dependencies
 ------------
@@ -48,6 +48,10 @@ Example usage
         hadoop-hdfs
         hadoop-common
         ...
+
+1. Run the tests for the entire project
+
+        $ grind test
 
 1. Run the tests for some modules
 
