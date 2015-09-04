@@ -63,10 +63,13 @@ def load_last_job_id():
   except:
     return None
 
-def submit_job_json(json):
+def submit_job_json(job_prefix, json):
   # Verify that it is proper JSON
   simplejson.loads(json)
-  job_id = generate_job_id()
+  # Prepend the job_prefix if present
+  if job_prefix is not None and len(job_prefix) > 0:
+    job_prefix += "."
+  job_id = job_prefix + generate_job_id()
   form_data = urllib.urlencode({'job_id': job_id, 'job_json': json})
   result_str = urllib2.urlopen(TEST_MASTER + "/submit_job",
                                data=form_data).read()
@@ -81,11 +84,21 @@ def submit_job_json(json):
   return job_id
 
 def submit(argv):
-  if len(argv) != 2:
-    print >>sys.stderr, "usage: %s submit <job-json-path>" % os.path.basename(argv[0])
+  p = optparse.OptionParser(
+      usage="usage: %prog submit [options] <job-json-path>")
+  p.add_option("-n", "--name",
+               action="store",
+               type="string",
+               dest="name",
+               default="",
+               help="Job name prefix, will be mangled for additional uniqueness")
+  options, args = p.parse_args()
+
+  if len(args) != 1:
+    p.print_help()
     sys.exit(1)
 
-  job_id = submit_job_json(file(argv[1]).read())
+  job_id = submit_job_json(options.name, file(args[0]).read())
   do_watch_results(job_id)
 
 def get_job_id_from_args(command, args):
@@ -116,7 +129,8 @@ def fetch(argv):
       usage="usage: %prog fetch [options] <job-id>")
   p.add_option("-d", "--output-dir", dest="out_dir", type="string",
                help="directory into which to download logs", metavar="PATH",
-	       default="dist-test-results")
+               default="dist-test-results")
+
   options, args = p.parse_args()
 
   if len(args) == 0:
