@@ -100,7 +100,7 @@ class DistTestServer(object):
   @cherrypy.tools.json_out()
   def job_status(self, job_id):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
-    job_summary = self._summarize_tasks(tasks)
+    job_summary = self._summarize_tasks(tasks, json_compatible=True)
     return job_summary
 
   @cherrypy.expose
@@ -119,7 +119,11 @@ class DistTestServer(object):
         ret.append(record)
     return ret
 
-  def _summarize_tasks(self, tasks):
+  def _summarize_tasks(self, tasks, json_compatible=False):
+    """Computes aggregate statistics on a set of tasks.
+    json kwarg is used to request JSON-compatible output, which is used by the client
+    to report progress."""
+
     result = {}
     result['total_tasks'] = len(tasks)
     result['finished_tasks'] = len([1 for t in tasks if t['status'] is not None])
@@ -127,20 +131,26 @@ class DistTestServer(object):
     result['failed_tasks'] = len([1 for t in tasks if t['status'] is not None and t['status'] != 0])
     result['succeeded_tasks'] = len([1 for t in tasks if t['status'] == 0])
     result['timedout_tasks'] = len([1 for t in tasks if t['status'] == -9])
-    result['submit_time'] = min([t["submit_timestamp"] for t in tasks])
 
     # Determine job state: if it's finished, how long its been running
+    finish_time = None
+    runtime = None
+    submit_time = min([t["submit_timestamp"] for t in tasks])
 
     result['status'] = "running"
-    result['finish_time'] = None
     stop = datetime.datetime.now()
+
     if result['total_tasks'] == result['finished_tasks']:
       result['status'] = "finished"
-      result['finish_time'] = max([t["complete_timestamp"] for t in tasks])
-      stop = result['finish_time']
+      finish_time = max([t["complete_timestamp"] for t in tasks])
+      stop = finish_time
+    runtime = stop - submit_time
 
-    runtime = stop - result["submit_time"]
-    result['runtime'] = runtime
+    # datetimes can't be auto-JSON'd, do not include them
+    if not json_compatible:
+      result["submit_time"] = submit_time
+      result["finish_time"] = finish_time
+      result['runtime'] = runtime
 
     return result
 
