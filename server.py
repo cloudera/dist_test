@@ -11,6 +11,7 @@ import urllib
 import simplejson
 import StringIO
 import gzip
+from collections import defaultdict
 
 TRACE_HTML = os.path.join(os.path.dirname(__file__), "trace.html")
 
@@ -63,21 +64,9 @@ class DistTestServer(object):
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
-  def submit_tasks(self, job_id, tasks):
-    if type(tasks) != list:
-      tasks = [tasks]
-    for isolate_hash in tasks:
-      task = dist_test.Task.create(job_id, isolate_hash, "")
-      self.results_store.register_task(task)
-      self.task_queue.submit_task(task)
-    return {"status": "SUCCESS"}
-
-  @cherrypy.expose
-  @cherrypy.tools.json_out()
   def cancel_job(self, job_id):
     self.results_store.cancel_job(job_id)
     return {"status": "SUCCESS"}
-    
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
@@ -91,16 +80,38 @@ class DistTestServer(object):
       task = dist_test.Task(task_desc)
       tasks.append(task)
 
+    tasks = self._sort_tasks_by_duration(tasks)
+
     self.results_store.register_tasks(tasks)
     for task in tasks:
       self.task_queue.submit_task(task)
     return {"status": "SUCCESS"}
 
+  def _sort_tasks_by_duration(self, tasks):
+    """Sort the tasks by the duration of their last completed execution, descending.
+
+    This is a simple form of longest-task-first scheduling to reduce the
+    effect of stragglers on overall job runtime."""
+    task_durations = self.results_store.fetch_recent_task_durations(tasks)
+    # turn it into a lookup table of description -> duration
+    dur_by_desc = defaultdict(int)
+    for t in task_durations:
+      dur_by_desc[t["description"]] = int(t["duration"])
+    tasks_with_duration = []
+    for t in tasks:
+      # Tuple of (task, duration)
+      tasks_with_duration.append((t, dur_by_desc[t.description]))
+    # Sort tasks descending based on duration
+    sorted_tasks = sorted(tasks_with_duration, key=lambda t: t[1], reverse=True)
+    # Trim off the durations
+    sorted_tasks = [x[0] for x in sorted_tasks]
+    return sorted_tasks
+
   @cherrypy.expose
   @cherrypy.tools.json_out()
   def job_status(self, job_id):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
-    job_summary = self._summarize_tasks(tasks)
+    job_summary = self._summarize_tasks(tasks, json_compatible=True)
     return job_summary
 
   @cherrypy.expose
@@ -119,7 +130,11 @@ class DistTestServer(object):
         ret.append(record)
     return ret
 
-  def _summarize_tasks(self, tasks):
+  def _summarize_tasks(self, tasks, json_compatible=False):
+    """Computes aggregate statistics on a set of tasks.
+    json_compatible kwarg is used to request JSON-compatible output, which is used by the client
+    to report progress."""
+
     result = {}
     result['total_tasks'] = len(tasks)
     result['finished_tasks'] = len([1 for t in tasks if t['status'] is not None])
@@ -127,20 +142,26 @@ class DistTestServer(object):
     result['failed_tasks'] = len([1 for t in tasks if t['status'] is not None and t['status'] != 0])
     result['succeeded_tasks'] = len([1 for t in tasks if t['status'] == 0])
     result['timedout_tasks'] = len([1 for t in tasks if t['status'] == -9])
-    result['submit_time'] = min([t["submit_timestamp"] for t in tasks])
 
     # Determine job state: if it's finished, how long its been running
+    finish_time = None
+    runtime = None
+    submit_time = min([t["submit_timestamp"] for t in tasks])
 
     result['status'] = "running"
-    result['finish_time'] = None
     stop = datetime.datetime.now()
+
     if result['total_tasks'] == result['finished_tasks']:
       result['status'] = "finished"
-      result['finish_time'] = max([t["complete_timestamp"] for t in tasks])
-      stop = result['finish_time']
+      finish_time = max([t["complete_timestamp"] for t in tasks])
+      stop = finish_time
+    runtime = stop - submit_time
 
-    runtime = stop - result["submit_time"]
-    result['runtime'] = runtime
+    # datetimes can't be auto-JSON'd, do not include them
+    if not json_compatible:
+      result["submit_time"] = submit_time
+      result["finish_time"] = finish_time
+      result['runtime'] = runtime
 
     return result
 
@@ -160,7 +181,7 @@ class DistTestServer(object):
     stats["total_tasks"] = sum([j["num_tasks"] for j in jobs])
 
     template = Template("""
-    <h1>Recent Jobs (last 12hrs)</h1>
+    <h1>Recent Jobs (last 1 day)</h1>
     <br style="clear: both;"/>
     <table class="table" id="jobs">
     <thead>

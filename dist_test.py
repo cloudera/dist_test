@@ -269,6 +269,30 @@ class ResultsStore(object):
       dict(job_id=job_id))
     return c.fetchall()
 
+  def fetch_recent_task_durations(self, tasks):
+    """For each task, determine the duration of its last completed run.
+    This is possibly inaccurate, since it identifies a task purely based
+    on its description."""
+    if len(tasks) == 0:
+      return {}
+    # Need to manually construct the values for WHERE IN clause, no support from MySQLdb
+    escaped_descs = ["'" + str(MySQLdb.escape_string(task.description)) + "'" for task in tasks]
+    where_values = ', '.join(escaped_descs)
+    # subquery finds the most recent completed run of each task description,
+    # self join it to get description and duration back out, deduplicated just in case
+    query = """
+      SELECT x.description, x.complete_timestamp-x.start_timestamp as duration FROM dist_test_tasks x
+          JOIN (SELECT description, MAX(complete_timestamp) as last_complete FROM dist_test_tasks
+                  WHERE description in (%s)
+                      AND start_timestamp != "0000-00-00 00:00:00"
+                      AND complete_timestamp != "0000-00-00 00:00:00"
+                  GROUP BY description) y
+          ON x.description=y.description AND x.complete_timestamp=y.last_complete
+          GROUP BY x.description, duration;
+    """ % (where_values)
+    print query
+    c = self._execute_query(query)
+    return c.fetchall()
 
   def _upload_to_s3(self, key, data, filename):
     k = boto.s3.key.Key(self.s3_bucket)
