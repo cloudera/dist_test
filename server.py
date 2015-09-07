@@ -183,7 +183,7 @@ class DistTestServer(object):
     stats["total_tasks"] = sum([j["num_tasks"] for j in jobs])
 
     template = Template("""
-    <h1>Recent Jobs (last 12hrs)</h1>
+    <h1>Recent Jobs (last 1 day)</h1>
     <br style="clear: both;"/>
     <table class="table" id="jobs">
     <thead>
