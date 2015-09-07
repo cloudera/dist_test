@@ -11,6 +11,7 @@ import urllib
 import simplejson
 import StringIO
 import gzip
+from collections import defaultdict
 
 TRACE_HTML = os.path.join(os.path.dirname(__file__), "trace.html")
 
@@ -93,16 +94,13 @@ class DistTestServer(object):
     effect of stragglers on overall job runtime."""
     task_durations = self.results_store.fetch_recent_task_durations(tasks)
     # turn it into a lookup table of description -> duration
-    lookup = {}
+    dur_by_desc = defaultdict(int)
     for t in task_durations:
-      lookup[t["description"]] = int(t["duration"])
+      dur_by_desc[t["description"]] = int(t["duration"])
     tasks_with_duration = []
     for t in tasks:
-      if t.description not in lookup.keys():
-        # Default to 0 duration, for unknown tasks.
-        lookup[t.description] = 0
       # Tuple of (task, duration)
-      tasks_with_duration.append((t, lookup[t.description]))
+      tasks_with_duration.append((t, dur_by_desc[t.description]))
     # Sort tasks descending based on duration
     sorted_tasks = sorted(tasks_with_duration, key=lambda t: t[1], reverse=True)
     # Trim off the durations
@@ -134,7 +132,7 @@ class DistTestServer(object):
 
   def _summarize_tasks(self, tasks, json_compatible=False):
     """Computes aggregate statistics on a set of tasks.
-    json kwarg is used to request JSON-compatible output, which is used by the client
+    json_compatible kwarg is used to request JSON-compatible output, which is used by the client
     to report progress."""
 
     result = {}
