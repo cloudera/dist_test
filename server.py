@@ -63,21 +63,9 @@ class DistTestServer(object):
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
-  def submit_tasks(self, job_id, tasks):
-    if type(tasks) != list:
-      tasks = [tasks]
-    for isolate_hash in tasks:
-      task = dist_test.Task.create(job_id, isolate_hash, "")
-      self.results_store.register_task(task)
-      self.task_queue.submit_task(task)
-    return {"status": "SUCCESS"}
-
-  @cherrypy.expose
-  @cherrypy.tools.json_out()
   def cancel_job(self, job_id):
     self.results_store.cancel_job(job_id)
     return {"status": "SUCCESS"}
-    
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
