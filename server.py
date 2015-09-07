@@ -79,10 +79,35 @@ class DistTestServer(object):
       task = dist_test.Task(task_desc)
       tasks.append(task)
 
+    tasks = self._sort_tasks_by_duration(tasks)
+
     self.results_store.register_tasks(tasks)
     for task in tasks:
       self.task_queue.submit_task(task)
     return {"status": "SUCCESS"}
+
+  def _sort_tasks_by_duration(self, tasks):
+    """Sort the tasks by the duration of their last completed execution, descending.
+
+    This is a simple form of longest-task-first scheduling to reduce the
+    effect of stragglers on overall job runtime."""
+    task_durations = self.results_store.fetch_recent_task_durations(tasks)
+    # turn it into a lookup table of description -> duration
+    lookup = {}
+    for t in task_durations:
+      lookup[t["description"]] = int(t["duration"])
+    tasks_with_duration = []
+    for t in tasks:
+      if t.description not in lookup.keys():
+        # Default to 0 duration, for unknown tasks.
+        lookup[t.description] = 0
+      # Tuple of (task, duration)
+      tasks_with_duration.append((t, lookup[t.description]))
+    # Sort tasks descending based on duration
+    sorted_tasks = sorted(tasks_with_duration, key=lambda t: t[1], reverse=True)
+    # Trim off the durations
+    sorted_tasks = [x[0] for x in sorted_tasks]
+    return sorted_tasks
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
