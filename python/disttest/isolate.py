@@ -107,7 +107,7 @@ M2_REPO=$(pwd)/.m2/repository mvn --no-snapshot-updates surefire:test --file $1 
         for module in self.maven_project.modules:
             rel_pom = os.path.relpath(module.pom, self.maven_project.project_root)
             if len(module.test_artifacts) == 0:
-                logger.info("Skipping module with no compiled test-sources jar: %s", module.root)
+                logger.debug("Skipping module with no compiled test-sources jar: %s", module.root)
                 continue
             for test in module.test_classes:
                 filename = os.path.join(self.output_dir, "%s.isolated.gen.json" % test.name)

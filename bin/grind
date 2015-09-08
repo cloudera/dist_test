@@ -193,7 +193,7 @@ class TestRunner:
                     (self.config.dist_test_client_path, \
                      os.path.basename(self.project_dir), \
                      tasks_file)
-            logger.debug("Calling %s", cmd)
+            logger.info("Calling %s", cmd)
             p = subprocess.Popen(shlex.split(cmd), env=isolate_env)
             p.wait()
             if p.returncode != 0:
