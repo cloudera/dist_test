@@ -1,6 +1,7 @@
 import beanstalkc
 import boto
-from ConfigParser import ConfigParser
+from ConfigParser import SafeConfigParser
+import errno
 import logging
 import MySQLdb
 import os
@@ -23,7 +24,11 @@ class Config(object):
     if path is None:
       path = os.path.join(os.getenv("HOME"), ".dist_test.cnf")
     logging.info("Reading configuration from %s", path)
-    self.config = ConfigParser()
+    # Populate parser with default values
+    defaults = {
+      "log_dir" : os.path.join(os.path.dirname(os.path.realpath(__file__)), "logs")
+    }
+    self.config = SafeConfigParser(defaults)
     self.config.read(path)
 
     # Isolate settings
@@ -44,6 +49,27 @@ class Config(object):
 
     # Beanstalk settings
     self.BEANSTALK_HOST = self._get_with_env_default('beanstalk', 'host', 'BEANSTALK_HOST')
+
+    # dist_test settings
+    if not self.config.has_section('dist_test'):
+      self.config.add_section('dist_test')
+    self.log_dir = self.config.get('dist_test', 'log_dir')
+    # Make the log directory if it doesn't exist
+    Config.mkdir_p(self.log_dir)
+
+    self.ACCESS_LOG = os.path.join(self.log_dir, "access.log")
+    self.ERROR_LOG = os.path.join(self.log_dir, "error.log")
+
+  @staticmethod
+  def mkdir_p(path):
+    """Similar to mkdir -p, make a directory ignoring EEXIST"""
+    try:
+      os.makedirs(path)
+    except OSError as exc:
+      if exc.errno == errno.EEXIST and os.path.isdir(path):
+        pass
+      else:
+        raise
 
   def _get_with_env_default(self, section, option, env_key):
     if self.config.has_option(section, option):

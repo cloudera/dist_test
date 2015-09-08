@@ -16,8 +16,8 @@ from collections import defaultdict
 TRACE_HTML = os.path.join(os.path.dirname(__file__), "trace.html")
 
 class DistTestServer(object):
-  def __init__(self):
-    self.config = dist_test.Config()
+  def __init__(self, config):
+    self.config = config
     self.task_queue = dist_test.TaskQueue(self.config)
     self.results_store = dist_test.ResultsStore(self.config)
 
@@ -378,9 +378,14 @@ $(document).ready(function() {
 
 if __name__ == "__main__":
   logging.basicConfig(level=logging.INFO)
-  logging.info("hello")
-  cherrypy.config.update(
-    {'server.socket_host': '0.0.0.0',
-     'server.socket_port': 8081})
-  cherrypy.quickstart(DistTestServer())
+  config = dist_test.Config()
+  logging.info("Writing access logs to %s", config.ACCESS_LOG)
+  logging.info("Writing error logs to %s", config.ERROR_LOG)
+  cherrypy.config.update({
+    'server.socket_host': '0.0.0.0',
+    'server.socket_port': 8081,
+    'log.access_file': config.ACCESS_LOG,
+    'log.error_file': config.ERROR_LOG,
+  })
+  cherrypy.quickstart(DistTestServer(config))
 
