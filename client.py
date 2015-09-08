@@ -11,7 +11,7 @@ import urllib2
 import simplejson
 import time
 
-TEST_MASTER = "http://a1228.halxg.cloudera.com:8081"
+TEST_MASTER = os.environ.get("DIST_TEST_MASTER", "http://a1228.halxg.cloudera.com:8081")
 
 RED = "\x1b[31m"
 RESET = "\x1b[m"
