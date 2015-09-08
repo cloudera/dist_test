@@ -44,9 +44,12 @@ class Config:
         # Validate
         for key in self.__defaults.keys():
             self.config.get(Config.__section, key)
-        # Translate to class members for nicer consumption
         for k in ["isolate_path", "dist_test_client_path"]:
+            # Translate to class members for nicer consumption
             self.__dict__[k] = os.path.expanduser(self.config.get(Config.__section, k))
+            if not os.path.isfile(self.__dict__[k]):
+                raise Exception("Config key %s value %s does not exist!" \
+                                % (k, self.__dict__[k]))
         for k in ["isolate_server"]:
             self.__dict__[k] = self.config.get(Config.__section, k)
 
