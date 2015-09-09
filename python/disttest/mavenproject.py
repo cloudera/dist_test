@@ -12,11 +12,13 @@ class Module:
 
     def __init__(self, root):
         self.root = root
+        self.root_module = None
         self.pom = os.path.join(root, "pom.xml")
         self.test_classes = []
         self.source_artifacts = []
         self.test_artifacts = []
         self.name = os.path.basename(self.root)
+        self.submodules = []
 
 class NotMavenProjectException(Exception):
     pass
@@ -51,11 +53,45 @@ class MavenProject:
             self.__filters.insert(0, exclude_filter)
         self._walk()
 
+
+    def _construct_parent_child_relationships(self):
+        """Construct the parent->child relationship for submodules."""
+        # Sort the modules based on path length, this guarantees we find parents before children
+        path_to_module = {}
+        for module in self.modules:
+            path_to_module[module.root] = module
+        assert len(path_to_module) > 0
+        sorted_mod_paths = sorted(path_to_module.keys())
+        # Trim off the first, it's the root
+        self.root_module = path_to_module[sorted_mod_paths[0]]
+        sorted_mod_paths = sorted_mod_paths[1:]
+        print sorted_mod_paths
+        for mod_path in sorted_mod_paths:
+            print mod_path
+            # Chop path components off the tail until we find a matching parent module
+            found = False
+            parent_path = mod_path
+            while not found:
+                parent_path = os.path.dirname(parent_path)
+                print "Parent:", parent_path
+                if parent_path == "/":
+                    break
+                if parent_path in path_to_module.keys():
+                    found = True
+                    break
+            if not found:
+                raise Exception("Could not find a parent of Maven submoodule at %s" % mod_path)
+            # Append self to parent's list of children
+            parent_module = path_to_module[parent_path]
+            parent_module.submodules.append(path_to_module[mod_path])
+
     def _walk(self):
         # Find the modules first, directories that have a pom.xml and a target dir
         for root, dirs, files in os.walk(self.project_root):
             if "pom.xml" in files and "target" in dirs:
-                self.modules.append(Module(root))
+                self.modules.append(Module(os.path.normpath(root)))
+
+        self._construct_parent_child_relationships()
 
         # If include_modules was specified, filter the found module list and check for missing modules
         self.included_modules = self.modules

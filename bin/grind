@@ -136,13 +136,20 @@ class TestRunner:
                             dest="dry_run",
                             help="Do not actually run tests.")
 
+    @staticmethod
+    def print_module_tree(root_module, prefix=""):
+        print prefix + "- " + root_module.name
+        subprefix = prefix + "  |"
+        for module in root_module.submodules:
+            TestRunner.print_module_tree(module, prefix = subprefix)
+
     def run(self):
         if self.args.list_modules:
-            i = isolate.Isolate(self.project_dir, self.output_dir)
+            # Do not include any modules, this way we skip looking for tests
+            i = isolate.Isolate(self.project_dir, self.output_dir, include_modules=[])
             print "Found %s modules in directory %s" \
                     % (len(i.maven_project.modules), i.maven_project.project_root)
-            for module in i.maven_project.modules:
-                print "\t" + module.name
+            TestRunner.print_module_tree(i.maven_project.root_module)
         else:
             self.run_tests()
 
