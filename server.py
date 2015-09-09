@@ -96,7 +96,7 @@ class DistTestServer(object):
     # turn it into a lookup table of description -> duration
     dur_by_desc = defaultdict(int)
     for t in task_durations:
-      dur_by_desc[t["description"]] = int(t["duration"])
+      dur_by_desc[t["description"]] = int(t["duration_secs"])
     tasks_with_duration = []
     for t in tasks:
       # Tuple of (task, duration)

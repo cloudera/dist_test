@@ -114,11 +114,15 @@ class Slave(object):
       stdout = None
       stderr = None
 
+    end_time = time.time()
+    duration_secs = end_time - start_time
+
     self.results_store.mark_task_finished(task.task,
                                           output_archive_hash=output_archive_hash,
                                           result_code=rc,
                                           stdout=stdout,
-                                          stderr=stderr)
+                                          stderr=stderr,
+                                          duration_secs=duration_secs)
 
   def run(self):
     while True:
