@@ -242,6 +242,7 @@ class ResultsStore(object):
                  output_archive_hash=output_archive_hash,
                  stdout_abbrev=stdout[0:100],
                  stderr_abbrev=stderr[0:100],
+                 description=task.description,
                  duration_secs=duration_secs)
     self._execute_query("""
       UPDATE dist_test_tasks SET
