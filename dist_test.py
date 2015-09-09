@@ -115,7 +115,7 @@ class ResultsStore(object):
     self.config = config
     self.thread_local = threading.local()
     logging.info("Connected to MySQL at %s" % config.MYSQL_HOST)
-    self._ensure_table()
+    self._ensure_tables()
 
     self.config.ensure_aws_configured()
     self.s3 = boto.connect_s3(self.config.AWS_ACCESS_KEY, self.config.AWS_SECRET_KEY)
@@ -161,7 +161,7 @@ class ResultsStore(object):
     logging.info("Connected to MySQL at %s" % self.config.MYSQL_HOST)
     return self.thread_local.db
 
-  def _ensure_table(self):
+  def _ensure_tables(self):
     self._execute_query("""
       CREATE TABLE IF NOT EXISTS dist_test_tasks (
         job_id varchar(100) not null,
@@ -178,6 +178,13 @@ class ResultsStore(object):
         PRIMARY KEY(job_id, task_id),
         INDEX(submit_timestamp)
       );""")
+    self._execute_query("""
+      CREATE TABLE IF NOT EXISTS dist_test_durations (
+        description varchar(100) not null primary key,
+        task_id varchar(100) not null,
+        duration_secs int not null
+      );""")
+
 
   def register_task(self, task):
     self._execute_query("""
@@ -216,7 +223,7 @@ class ResultsStore(object):
         complete_timestamp = now()
       WHERE job_id = %(job_id)s AND status IS NULL""", parms)
     
-  def mark_task_finished(self, task, result_code, stdout, stderr, output_archive_hash):
+  def mark_task_finished(self, task, result_code, stdout, stderr, output_archive_hash, duration_secs):
     if stdout:
       fn = "%s.stdout" % task.task_id
       self._upload_to_s3(fn, stdout, fn)
@@ -234,7 +241,8 @@ class ResultsStore(object):
                  task_id=task.task_id,
                  output_archive_hash=output_archive_hash,
                  stdout_abbrev=stdout[0:100],
-                 stderr_abbrev=stderr[0:100])
+                 stderr_abbrev=stderr[0:100],
+                 duration_secs=duration_secs)
     self._execute_query("""
       UPDATE dist_test_tasks SET
         status = %(result_code)s,
@@ -243,6 +251,13 @@ class ResultsStore(object):
         output_archive_hash = %(output_archive_hash)s,
         complete_timestamp = now()
       WHERE job_id = %(job_id)s AND task_id = %(task_id)s""", parms)
+
+    # Update entry for the description in the dist_test_durations table
+    self._execute_query("""
+      INSERT INTO dist_test_durations
+        VALUES (%(description)s, %(task_id)s, %(duration_secs)s)
+      ON DUPLICATE KEY
+        UPDATE task_id = %(task_id)s, duration_secs = (duration_secs * 0.7) + (%(duration_secs)s * 0.3)""", parms)
 
   def generate_output_link(self, task_row, output):
     expiry = 60 * 60 * 24 # link should last 1 day
@@ -278,19 +293,11 @@ class ResultsStore(object):
     # Need to manually construct the values for WHERE IN clause, no support from MySQLdb
     escaped_descs = ["'" + str(MySQLdb.escape_string(task.description)) + "'" for task in tasks]
     where_values = ', '.join(escaped_descs)
-    # subquery finds the most recent completed run of each task description,
-    # self join it to get description and duration back out, deduplicated just in case
+    # Fetch duration of last completed run from the dist_test_durations table
     query = """
-      SELECT x.description, x.complete_timestamp-x.start_timestamp as duration FROM dist_test_tasks x
-          JOIN (SELECT description, MAX(complete_timestamp) as last_complete FROM dist_test_tasks
-                  WHERE description in (%s)
-                      AND start_timestamp != "0000-00-00 00:00:00"
-                      AND complete_timestamp != "0000-00-00 00:00:00"
-                  GROUP BY description) y
-          ON x.description=y.description AND x.complete_timestamp=y.last_complete
-          GROUP BY x.description, duration;
+      SELECT description, duration_secs FROM dist_test_durations
+      WHERE description in (%s);
     """ % (where_values)
-    print query
     c = self._execute_query(query)
     return c.fetchall()
 
