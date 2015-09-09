@@ -177,20 +177,23 @@ class TestRunner:
             logger.error("Exclude patterns: %s", self.args.exclude_patterns)
             sys.exit(2)
 
-        # Invoke batcharchive on the generated files
-        cmd = "%s batcharchive --dump-json=%s --"
-        hashes_file = os.path.join(self.output_dir, "hashes.json")
-        cmd = cmd % (self.config.isolate_path, hashes_file)
-        logger.debug("Invoking %s", cmd)
-        p = subprocess.Popen(shlex.split(cmd) + i.isolated_files, env=isolate_env)
-        p.wait()
-        if p.returncode != 0:
-            raise Exception("isolate batcharchive failed")
+        if self.args.dry_run:
+            logging.info("Dry run, skipping isolate batcharchive step")
+        else:
+            # Invoke batcharchive on the generated files
+            cmd = "%s batcharchive --dump-json=%s --"
+            hashes_file = os.path.join(self.output_dir, "hashes.json")
+            cmd = cmd % (self.config.isolate_path, hashes_file)
+            logger.debug("Invoking %s", cmd)
+            p = subprocess.Popen(shlex.split(cmd) + i.isolated_files, env=isolate_env)
+            p.wait()
+            if p.returncode != 0:
+                raise Exception("isolate batcharchive failed")
 
-        # Parse the dumped json file and turn it into task descriptions
-        # for dist_test
-        tasks_file = os.path.join(self.output_dir, "run.json")
-        self.isolate_hashes_to_tasks(hashes_file, tasks_file)
+            # Parse the dumped json file and turn it into task descriptions
+            # for dist_test
+            tasks_file = os.path.join(self.output_dir, "run.json")
+            self.isolate_hashes_to_tasks(hashes_file, tasks_file)
 
         # Call the dist_test client
         if self.args.dry_run:

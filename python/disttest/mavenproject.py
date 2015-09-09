@@ -39,7 +39,7 @@ class MavenProject:
             raise NotMavenProjectException("No pom.xml file found in %s, is this a Maven project?" % project_root)
         self.project_root = project_root
         self.modules = [] # All modules in the project
-        self.included_modules = [] # Modules that match the include_modules filter
+        self.included_modules = set() # Modules that match the include_modules filter
         self.__include_modules = include_modules
         # Default filters to find test classes
         self.__filters = [PotentialTestClassNameFilter(), NoAbstractClassFilter()]
@@ -65,15 +65,12 @@ class MavenProject:
         # Trim off the first, it's the root
         self.root_module = path_to_module[sorted_mod_paths[0]]
         sorted_mod_paths = sorted_mod_paths[1:]
-        print sorted_mod_paths
         for mod_path in sorted_mod_paths:
-            print mod_path
             # Chop path components off the tail until we find a matching parent module
             found = False
             parent_path = mod_path
             while not found:
                 parent_path = os.path.dirname(parent_path)
-                print "Parent:", parent_path
                 if parent_path == "/":
                     break
                 if parent_path in path_to_module.keys():
@@ -85,6 +82,32 @@ class MavenProject:
             parent_module = path_to_module[parent_path]
             parent_module.submodules.append(path_to_module[mod_path])
 
+    def _filter_included_modules(self):
+        """Determine which of the modules are included (if specified)"""
+        # If no modules were specified, they're all included
+        if self.__include_modules is None:
+            self.included_modules = set(self.modules)
+            return
+
+        # If include_modules was specified, filter the found module list and check for missing modules
+        # Filter to just the specified modules
+        included = [m for m in self.modules if m.name in self.__include_modules]
+        # Mismatch in length means we're missing some
+        if len(included) != len(self.__include_modules):
+            for m in included:
+                self.__include_modules.remove(m.name)
+            assert len(self.__include_modules) > 0
+            raise ModuleNotFoundException("Could not find specified modules: " + " ".join(self.__include_modules))
+        # Add modules to member set, including submodules
+        for m in included:
+            self._include_module_tree(m)
+
+    def _include_module_tree(self, module):
+        self.included_modules.add(module)
+        for submodule in module.submodules:
+            self._include_module_tree(submodule)
+
+
     def _walk(self):
         # Find the modules first, directories that have a pom.xml and a target dir
         for root, dirs, files in os.walk(self.project_root):
@@ -93,17 +116,7 @@ class MavenProject:
 
         self._construct_parent_child_relationships()
 
-        # If include_modules was specified, filter the found module list and check for missing modules
-        self.included_modules = self.modules
-        if self.__include_modules is not None:
-            # Filter to just the specified modules
-            self.included_modules = [m for m in self.modules if m.name in self.__include_modules]
-            # Mismatch in length means we're missing some
-            if len(self.included_modules) != len(self.__include_modules):
-                for m in self.included_modules:
-                    self.__include_modules.remove(m.name)
-                assert len(self.__include_modules) > 0
-                raise ModuleNotFoundException("Could not find specified modules: " + " ".join(self.__include_modules))
+        self._filter_included_modules()
 
         # For each included module, look for test classes within target dir
         for module in self.included_modules:
@@ -132,11 +145,10 @@ class MavenProject:
                     elif entry.endswith(".jar") and not entry.endswith("-sources.jar") and not entry.endswith("-javadoc.jar"):
                         module.source_artifacts.append(abs_path)
 
-        num_modules = len(self.modules)
         num_classes = reduce(lambda x,y: x+y,\
-                             [0] + [len(m.test_classes) for m in self.modules])
-        logging.info("Found %s modules with %s test classes in %s",\
-                     num_modules, num_classes, self.project_root)
+                             [0] + [len(m.test_classes) for m in self.included_modules])
+        logging.info("Found %s included modules out of %s total modules with %s test classes within project %s",\
+                     len(self.included_modules), len(self.modules), num_classes, self.project_root)
 
     @staticmethod
     def __get_classfiles(files):
