@@ -94,7 +94,7 @@ class TestRunner:
         self.project_dir = os.getcwd()
         self.config = Config()
         self.config.read_config()
-        self.output_dir = tempfile.mkdtemp()
+        self.output_dir = tempfile.mkdtemp(prefix="grind")
         logger.debug("Created temp directory %s", self.output_dir)
         pass
 
