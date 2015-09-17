@@ -246,10 +246,10 @@ class DistTestServer(object):
         t['stdout_link'] = self.results_store.generate_output_link(t, "stdout")
       if t['stderr_abbrev']:
         t['stderr_link'] = self.results_store.generate_output_link(t, "stderr")
-      if t['complete_timestamp'] is not None:
+
+      if t['start_timestamp'] is not None and t['complete_timestamp'] is not None:
         delta = t['complete_timestamp'] - t['start_timestamp']
         t['runtime'] = delta.seconds + (delta.days*24*60*60)
-
       elif t['start_timestamp'] is not None:
         delta = datetime.datetime.now() - t['start_timestamp']
         t['runtime'] = delta.seconds + (delta.days*24*60*60)
