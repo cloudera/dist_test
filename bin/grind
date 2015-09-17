@@ -27,8 +27,13 @@ class Config:
         "grind_cache": os.path.join("~", ".grind", "cache"),
     }
 
-    def __init__(self):
-        self.location = os.path.join(os.environ['HOME'], ".grind", "grind.cfg")
+    _default_location = os.path.join(os.environ['HOME'], ".grind", "grind.cfg")
+
+    def __init__(self, location):
+        if location is None:
+            self.location = Config._default_location
+        else:
+            self.location = location
         self.config = ConfigParser.SafeConfigParser()
 
     def read_config(self):
@@ -67,7 +72,8 @@ class Config:
 class ConfigRunner:
     """Config subcommand."""
 
-    def __init__(self, args):
+    def __init__(self, config, args):
+        self.config = config
         self.args = args
 
     @staticmethod
@@ -83,15 +89,13 @@ class ConfigRunner:
                                 + " Overwrites existing config file!")
 
     def run(self):
-        config = Config()
-
         if self.args.write and not self.args.generate:
             print "--write requires --generate"
             sys.exit(1)
 
         # If generate, print the default config
         if self.args.generate:
-            config.load_defaults()
+            self.config.load_defaults()
             # If overwriting, prompt for confirmation first
             if self.args.write:
                 sys.stdout.write("Do you want to overwrite %s with sample config file (y/N): ")
@@ -99,26 +103,26 @@ class ConfigRunner:
                 if choice != "y":
                     print("Aborting")
                     return
-                config_dir = os.path.dirname(config.location)
+                config_dir = os.path.dirname(self.config.location)
                 if not os.path.isdir(config_dir):
                     os.makedirs(config_dir)
                 with open(config.location, "wt") as out:
-                    config.write_config(out)
-                print "Wrote sample config file to", config.location
+                    self.config.write_config(out)
+                print "Wrote sample config file to", self.config.location
             else:
                 config.write_config(sys.stdout)
             return
         # Else, load and print the found config file
-        config.read_config()
-        config.write_config(sys.stdout)
+        self.config.read_config()
+        self.config.write_config(sys.stdout)
 
 class TestRunner:
     """Test subcommand."""
 
-    def __init__(self, args):
+    def __init__(self, config, args):
         self.args = args
         self.project_dir = os.getcwd()
-        self.config = Config()
+        self.config = config
         self.config.read_config()
         self.output_dir = tempfile.mkdtemp(prefix="grind.")
         logger.debug("Created temp directory %s", self.output_dir)
@@ -309,7 +313,12 @@ def main():
     parser.add_argument('-v', '--verbose',
                         action='store_true',
                         help="Whether to print verbose output for debugging.")
+    parser.add_argument('-c', '--config',
+                        dest="config_location",
+                        help="Location of config file. Default is %s" % Config._default_location)
     args = parser.parse_args(sys.argv[1:])
+
+    config = Config(args.config_location)
 
     if args.verbose:
         logger.setLevel(logging.DEBUG)
@@ -320,17 +329,16 @@ def main():
         "config": config_subcommand,
     }
 
-    subcommands[args.subparser_name](args)
+    subcommands[args.subparser_name](config, args)
 
-
-def config_subcommand(args):
-    c = ConfigRunner(args)
+def config_subcommand(config, args):
+    c = ConfigRunner(config, args)
     c.run()
 
 
-def test_subcommand(args):
+def test_subcommand(config, args):
 
-    runner = TestRunner(args)
+    runner = TestRunner(config, args)
     try:
         runner.run()
     finally:
