@@ -152,6 +152,10 @@ class TestRunner:
                             type=int,
                             default=1,
                             help="Number of times to run each test.")
+        parser.add_argument('-t', '--timeout',
+                            type=int,
+                            default=300,
+                            help="Per-task timeout.")
         # Util / debug
         parser.add_argument('--leak-temp',
                             action='store_true',
@@ -266,21 +270,25 @@ class TestRunner:
         with open(infile, "r") as i:
             inmap = json.load(i)
 
-        # Do a sanity calculation before generating task list,
+        num_tasks = self.args.repeat * len(inmap.keys())
+        # Do a sanity check before generating task list,
         # a giant repeat parameter could cause trouble.
-        if self.args.repeat * len(inmap.keys()) > 10000:
-            logger.error("More than 10,000 tasks generated (%s tasks repeated %s times)", len(inmap.keys()), self.args.repeat)
+        if num_tasks > 10000:
+            logger.error("More than 10,000 tasks generated (%s tasks repeated %s times)",
+                         len(inmap.keys()), self.args.repeat)
             raise Exception("Too many tasks generated!")
+
         for k,v in inmap.iteritems():
             for i in xrange(self.args.repeat):
                 tasks += [{"isolate_hash" : str(v),
                         "description" : str(k),
-                        "timeout": 300
+                        "timeout": self.args.timeout,
                         }]
 
         outmap = {"tasks": tasks}
 
-        logger.debug("Writing output json file with task descriptions to %s", outfile)
+        logger.debug("Writing output json file with %s task descriptions to %s",
+                     num_tasks, outfile)
         with open(outfile, "wt") as o:
             json.dump(outmap, o)
 
