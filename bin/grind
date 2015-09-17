@@ -24,18 +24,16 @@ class Config:
         "isolate_server": "http://a1228.halxg.cloudera.com:4242",
         "isolate_path": os.path.join("~", "dev", "go", "bin", "isolate"),
         "dist_test_client_path": os.path.join("~", "dev", "dist_test", "client.py"),
+        "grind_cache": os.path.join("~", ".grind", "cache"),
     }
 
     def __init__(self):
-        # Load up the defaults
-        FILENAME = ".grind.cfg"
-        home = os.environ['HOME']
-        self.location = os.path.join(home, FILENAME)
+        self.location = os.path.join(os.environ['HOME'], ".grind", "grind.cfg")
         self.config = ConfigParser.SafeConfigParser()
 
     def read_config(self):
         if not os.path.exists(self.location):
-            raise Exception("No config file found at %s, try --generate first?" % self.location)
+            raise Exception("No config file found at %s, try config --generate first?" % self.location)
         if not os.path.isfile(self.location):
             raise Exception("Config location %s is not a file" % self.location)
         # Read config from file
@@ -44,12 +42,17 @@ class Config:
         # Validate
         for key in self.__defaults.keys():
             self.config.get(Config.__section, key)
+        # Check that paths to required binaries actually exist
         for k in ["isolate_path", "dist_test_client_path"]:
-            # Translate to class members for nicer consumption
             self.__dict__[k] = os.path.expanduser(self.config.get(Config.__section, k))
             if not os.path.isfile(self.__dict__[k]):
                 raise Exception("Config key %s value %s does not exist!" \
                                 % (k, self.__dict__[k]))
+        # Make grind cache directory if it does not exist
+        for k in ["grind_cache"]:
+            self.__dict__[k] = os.path.expanduser(self.config.get(Config.__section, k))
+            if not os.path.exists(self.__dict__[k]):
+                os.makedirs(self.__dict__[k])
         for k in ["isolate_server"]:
             self.__dict__[k] = self.config.get(Config.__section, k)
 
@@ -74,17 +77,40 @@ class ConfigRunner:
                             action='store_true',
                             help="Print a sample configuration file to stdout.")
 
+        parser.add_argument('-w', '--write',
+                            action='store_true',
+                            help="Save a sample configuration file to config path." \
+                                + " Overwrites existing config file!")
+
     def run(self):
         config = Config()
+
+        if self.args.write and not self.args.generate:
+            print "--write requires --generate"
+            sys.exit(1)
+
         # If generate, print the default config
         if self.args.generate:
             config.load_defaults()
-            config.write_config(sys.stdout)
+            # If overwriting, prompt for confirmation first
+            if self.args.write:
+                sys.stdout.write("Do you want to overwrite %s with sample config file (y/N): ")
+                choice = raw_input().lower()
+                if choice != "y":
+                    print("Aborting")
+                    return
+                config_dir = os.path.dirname(config.location)
+                if not os.path.isdir(config_dir):
+                    os.makedirs(config_dir)
+                with open(config.location, "wt") as out:
+                    config.write_config(out)
+                print "Wrote sample config file to", config.location
+            else:
+                config.write_config(sys.stdout)
             return
         # Else, load and print the found config file
         config.read_config()
         config.write_config(sys.stdout)
-
 
 class TestRunner:
     """Test subcommand."""
@@ -94,7 +120,7 @@ class TestRunner:
         self.project_dir = os.getcwd()
         self.config = Config()
         self.config.read_config()
-        self.output_dir = tempfile.mkdtemp(prefix="grind")
+        self.output_dir = tempfile.mkdtemp(prefix="grind.")
         logger.debug("Created temp directory %s", self.output_dir)
         pass
 
@@ -159,9 +185,10 @@ class TestRunner:
 
         i = isolate.Isolate(self.project_dir,
                             self.output_dir,
-                            include_modules=self.args.include_modules,
-                            include_patterns=self.args.include_patterns,
-                            exclude_patterns=self.args.exclude_patterns)
+                            include_modules = self.args.include_modules,
+                            include_patterns = self.args.include_patterns,
+                            exclude_patterns = self.args.exclude_patterns,
+                            cache_dir = self.config.grind_cache)
         # Enumerate tests and package test dependencies
         i.package()
         # Generate one task description json file per test

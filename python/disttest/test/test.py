@@ -127,8 +127,9 @@ class TestPackager(unittest.TestCase):
     @classmethod
     def setUpClass(self):
         self.output_dir = tempfile.mkdtemp()
+        self.cache_dir = tempfile.mkdtemp()
         self.project = mavenproject.MavenProject(TEST_PROJECT_PATH)
-        self.packager = packager.Packager(self.project, self.output_dir)
+        self.packager = packager.Packager(self.project, self.output_dir, self.cache_dir)
 
     def print_output_dir(self):
         for root, dirs, files in os.walk(self.output_dir):
@@ -141,13 +142,31 @@ class TestPackager(unittest.TestCase):
     def tearDownClass(self):
         #self.print_output_dir()
         shutil.rmtree(self.output_dir)
+        shutil.rmtree(self.cache_dir)
         pass
 
     def test_package_target_dirs(self):
-        self.packager.package_target_dirs()
+        self.packager._package_target_dirs()
 
     def test_package_maven_dependencies(self):
-        self.packager.package_maven_dependencies()
+        self.packager._package_maven_dependencies()
+        # Package from the cache dir
+        cpack = packager.Packager(self.project, tempfile.mkdtemp(), self.cache_dir)
+        cpack._package_maven_dependencies()
+
+    def test_manifest(self):
+        # Build a manifest and write it out
+        built_manifest = packager.Manifest.build_from_project(os.path.dirname(__file__))
+        path = os.path.join(self.output_dir, "manifest")
+        built_manifest.write(path)
+        # Read it back in and make sure it's equal
+        read_manifest = packager.Manifest.read(path)
+        self.assertEqual(built_manifest, read_manifest)
+        # Mess up the manifest and make sure it's not equal
+        read_manifest.git_branch = "not/a/branch"
+        read_manifest.write(path)
+        read_manifest = packager.Manifest.read(path)
+        self.assertNotEqual(built_manifest, read_manifest)
 
 class TestIsolate(unittest.TestCase):
 
