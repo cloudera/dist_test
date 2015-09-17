@@ -64,7 +64,7 @@ which mvn
 mvn -version
 which java
 java -version
-mvn -Dmaven.repo.local=$(pwd)/.m2/repository --offline surefire:test --file $1 -Dtest=$2
+mvn -Dmaven.repo.local=$(pwd)/.m2/repository surefire:test --file $1 -Dtest=$2
 """
 
     __COMMAND = """%s <(POM) <(TESTCLASS)""" % __RUN_SCRIPT_NAME
