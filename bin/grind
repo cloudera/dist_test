@@ -152,19 +152,20 @@ class TestRunner:
                             type=int,
                             default=1,
                             help="Number of times to run each test.")
+        default_timeout = 600
         parser.add_argument('-t', '--timeout',
                             type=int,
-                            default=300,
-                            help="Per-task timeout.")
+                            default=default_timeout,
+                            help="Per-task timeout. The default timeout is %s seconds." % default_timeout)
         # Util / debug
         parser.add_argument('--leak-temp',
                             action='store_true',
                             dest="leak_temp",
-                            help="Leak the temp directory with intermediate files")
+                            help="Leak the temp directory with intermediate files. Useful for debugging.")
         parser.add_argument('--dry-run',
                             action='store_true',
                             dest="dry_run",
-                            help="Do not actually run tests.")
+                            help="Do not actually run tests or perform remote operations. Useful for debugging.")
 
     @staticmethod
     def print_module_tree(root_module, prefix=""):
