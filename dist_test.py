@@ -185,6 +185,7 @@ class ResultsStore(object):
       self.config.MYSQL_PWD,
       self.config.MYSQL_DB)
     logging.info("Connected to MySQL at %s" % self.config.MYSQL_HOST)
+    self.thread_local.db.autocommit(True)
     return self.thread_local.db
 
   def _ensure_tables(self):
