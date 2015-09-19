@@ -30,12 +30,12 @@ class DistTestServer(object):
     return self.render_container(body)
 
   @cherrypy.expose
-  def job(self, job_id):
+  def job(self, job_id, task_id=None):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
-    job_summary = self._summarize_tasks(tasks)
+    job_summary, task_groups = self._summarize_tasks(tasks)
     body = ""
-    body += self._render_job_header(job_id, job_summary)
-    body += self._render_tasks(tasks, job_summary)
+    body += self._render_job_header(job_id, job_summary, task_groups)
+    body += self._render_tasks(tasks, job_summary, task_groups)
     return self.render_container(body)
 
   @staticmethod
@@ -87,6 +87,16 @@ class DistTestServer(object):
       self.task_queue.submit_task(task)
     return {"status": "SUCCESS"}
 
+  @cherrypy.expose
+  @cherrypy.tools.json_out()
+  def retry_task(self, task_json):
+    task = dist_test.Task.from_json(task_json)
+    if task.retry < task.max_retries:
+      task.retry += 1
+      self.results_store.register_task(task)
+      self.task_queue.submit_task(task)
+    return {"status": "SUCCESS"}
+
   def _sort_tasks_by_duration(self, tasks):
     """Sort the tasks by the duration of their last completed execution, descending.
 
@@ -111,7 +121,7 @@ class DistTestServer(object):
   @cherrypy.tools.json_out()
   def job_status(self, job_id):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
-    job_summary = self._summarize_tasks(tasks, json_compatible=True)
+    job_summary, task_groups = self._summarize_tasks(tasks, json_compatible=True)
     return job_summary
 
   @cherrypy.expose
@@ -139,9 +149,31 @@ class DistTestServer(object):
     result['total_tasks'] = len(tasks)
     result['finished_tasks'] = len([1 for t in tasks if t['status'] is not None])
     result['running_tasks'] = len([1 for t in tasks if t['status'] is None])
-    result['failed_tasks'] = len([1 for t in tasks if t['status'] is not None and t['status'] != 0])
-    result['succeeded_tasks'] = len([1 for t in tasks if t['status'] == 0])
+    result['retried_tasks'] = len([1 for t in tasks if t['retry'] > 0])
     result['timedout_tasks'] = len([1 for t in tasks if t['status'] == -9])
+    # Calculating success and failure requires grouping by task_id,
+    # since flaky tasks can be automatically retried
+    task_groups = defaultdict(list)
+    result['failed_groups'] = 0
+    result['succeeded_groups'] = 0
+    result['flaky_groups'] = 0
+    for t in tasks:
+      task_groups[t['task_id']].append(t)
+    result['total_groups'] = len(task_groups)
+    for group in task_groups.values():
+      failed_tasks = [t['status'] is not None and t['status'] != 0 for t in group]
+      failed = all(failed_tasks)
+      succeeded = any([t['status'] == 0 for t in group])
+      timedout = all([t['status'] == -9 for t in group])
+      if failed:
+        result['failed_groups'] += 1
+      if succeeded:
+        result['succeeded_groups'] += 1
+      if timedout:
+        result['timedout_tasks'] += 1
+      # If we succeeded after some failures, increment flaky count
+      if succeeded and any(failed_tasks):
+        result['flaky_groups'] += 1
 
     # Determine job state: if it's finished, how long its been running
     finish_time = None
@@ -163,7 +195,7 @@ class DistTestServer(object):
       result["finish_time"] = finish_time
       result['runtime'] = runtime
 
-    return result
+    return result, task_groups
 
   def _render_stats(self, stats):
     template = Template("""
@@ -204,10 +236,10 @@ class DistTestServer(object):
     """)
     return template.render(jobs=jobs, stats=stats)
 
-  def _render_job_header(self, job_id, job_summary):
-    if job_summary['total_tasks'] > 0:
-      success_percent = job_summary['succeeded_tasks'] * 100 / float(job_summary['total_tasks'])
-      fail_percent = job_summary['failed_tasks'] * 100 / float(job_summary['total_tasks'])
+  def _render_job_header(self, job_id, job_summary, task_groups):
+    if job_summary['total_groups'] > 0:
+      success_percent = job_summary['succeeded_groups'] * 100 / float(job_summary['total_groups'])
+      fail_percent = job_summary['failed_groups'] * 100 / float(job_summary['total_groups'])
     else:
       success_percent = 0
       fail_percent = 0
@@ -240,13 +272,22 @@ class DistTestServer(object):
     """)
     return template.render(job=job, job_summary=job_summary)
 
-  def _render_tasks(self, tasks, job_summary):
+  def _render_tasks(self, tasks, job_summary, task_groups):
+    # Calculate status of each task group
+    task_to_group_status = defaultdict(dict)
+    for task_id, group in task_groups.iteritems():
+      # Success if any of the tasks in group succeeded
+      task_to_group_status[task_id]['succeeded'] = any([t['status'] == 0 for t in group])
+      # Failed if we hit the max retry and it failed
+      task_to_group_status[task_id]['failed'] = any([t['status'] is not None and t['status'] != 0 for t in group if t['retry'] == t['max_retries']])
+
     for t in tasks:
+      # stdout/stderr links
       if t['stdout_abbrev']:
         t['stdout_link'] = self.results_store.generate_output_link(t, "stdout")
       if t['stderr_abbrev']:
         t['stderr_link'] = self.results_store.generate_output_link(t, "stderr")
-
+      # Calculate the elapsed time
       if t['start_timestamp'] is not None and t['complete_timestamp'] is not None:
         delta = t['complete_timestamp'] - t['start_timestamp']
         t['runtime'] = delta.seconds + (delta.days*24*60*60)
@@ -255,6 +296,21 @@ class DistTestServer(object):
         t['runtime'] = delta.seconds + (delta.days*24*60*60)
       else:
         t['runtime'] = None
+      # Task status.
+      #   All failures, no retries left: mark failures as failed
+      #   All failures, some retries left: mark failures as flaky
+      #   One success: mark failures as flaky
+      status = []
+      if t['status'] is None:
+        status = ['task-running']
+      elif t['status'] == 0:
+        status = ['task-successful']
+      else:
+        status = ['task-failed']
+        group_status = task_to_group_status[t['task_id']]
+        if group_status['succeeded'] or not group_status['failed']:
+          status = ['task-flaky']
+      t['status_class'] = ' '.join(status)
 
     template = Template("""
       <script>
@@ -275,16 +331,18 @@ $(document).ready(function() {
   $('#show-successful').click(function() { showOnly('task-successful'); });
   $('#show-failed').click(function() { showOnly('task-failed'); });
   $('#show-timedout').click(function() { showOnly('task-timedout'); });
+  $('#show-flaky').click(function() { showOnly('task-flaky'); });
 } );
 </script>
     <br style="clear: both;"/>
     <div>
       Show:
-      <a id="show-all">all ({{ job_summary.total_tasks }})</a> |
+      <a id="show-all">all ({{ job_summary.total_groups }})</a> |
       <a id="show-running">running ({{ job_summary.running_tasks }})</a> |
-      <a id="show-failed">failed ({{ job_summary.failed_tasks }})</a> |
-      <a id="show-successful">successful ({{ job_summary.succeeded_tasks }})</a> |
-      <a id="show-timedout">timed out ({{ job_summary.timedout_tasks }})</a>
+      <a id="show-failed">failed ({{ job_summary.failed_groups }})</a> |
+      <a id="show-successful">successful ({{ job_summary.succeeded_groups }})</a> |
+      <a id="show-timedout">timed out ({{ job_summary.timedout_tasks }})</a> |
+      <a id="show-flaky">flaky ({{ job_summary.flaky_groups }})</a>
     </div>
     <table class="table sortable" id="tasks">
     <thead>
@@ -297,19 +355,12 @@ $(document).ready(function() {
         <th>stdout</th>
         <th>stderr</th>
         <th>task</th>
+        <th>retry</th>
       </tr>
     </thead>
     <tbody>
       {% for task in tasks %}
-        <tr {% if task.status is none %}
-              class="task-running"
-            {% elif task.status == 0 %}
-              class="task-successful"
-            {% elif task.status == -9 %}
-              class="task-failed task-timedout"
-            {% else %}
-              class="task-failed"
-            {% endif %}>
+        <tr class="{{ task.status_class |e}}">
           <td>{{ task.runtime | int |e }}</td>
           <td>{{ task.description |e }}</td>
           <td>{{ task.hostname |e }}</td>
@@ -326,6 +377,7 @@ $(document).ready(function() {
               {% endif %}
           </td>
           <td>{{ task.task_id |e }}</td>
+          <td>{{ task.retry |e }}</td>
         </tr>
       {% endfor %}
       </tbody>
@@ -360,6 +412,7 @@ $(document).ready(function() {
         .task-running { background-color: #ffa; }
         .task-successful { background-color: #afa; }
         .task-failed { background-color: #faa; }
+        .task-flaky { background-color: #fc9; }
         .filler.red { background-color: #f00; }
       </style>
     </head>
