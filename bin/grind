@@ -152,10 +152,14 @@ class TestRunner:
                             help="Exclude pattern for unittests." \
                             + "Takes precedence over include patterns. Supports globbing. Can be specified multiple times.")
         # Misc
-        parser.add_argument('-r', '--repeat',
+        parser.add_argument('-n', '--num',
                             type=int,
                             default=1,
                             help="Number of times to run each test.")
+        parser.add_argument('-r', '--retries',
+                            type=int,
+                            default=0,
+                            help="Number of times to retry test if it fails.")
         default_timeout = 600
         parser.add_argument('-t', '--timeout',
                             type=int,
@@ -189,8 +193,8 @@ class TestRunner:
             self.run_tests()
 
     def run_tests(self):
-        if self.args.repeat <= 0:
-            raise Exception("--repeat must be greater than 0 (got %s)" % self.args.repeat)
+        if self.args.num <= 0:
+            raise Exception("--num must be greater than 0 (got %s)" % self.args.num)
 
         i = isolate.Isolate(self.project_dir,
                             self.output_dir,
@@ -243,9 +247,13 @@ class TestRunner:
             p = subprocess.Popen(shlex.split(cmd), env=isolate_env)
             p.wait()
             if p.returncode != 0:
-                raise Exception("dist_test client submit failed")
+                if p.returncode == 88:
+                    logger.warn("Test run failed!")
+                    sys.exit(p.returncode)
+                else:
+                    raise Exception("dist_test client submit failed")
 
-        logging.info("Finished!")
+        logging.info("Success!")
 
     def cleanup(self):
         if self.args.leak_temp:
@@ -275,19 +283,24 @@ class TestRunner:
         with open(infile, "r") as i:
             inmap = json.load(i)
 
-        num_tasks = self.args.repeat * len(inmap.keys())
+        num_tasks = self.args.num * len(inmap.keys())
         # Do a sanity check before generating task list,
-        # a giant repeat parameter could cause trouble.
+        # a giant num parameter could cause trouble.
         if num_tasks > 10000:
-            logger.error("More than 10,000 tasks generated (%s tasks repeated %s times)",
-                         len(inmap.keys()), self.args.repeat)
+            logger.error("More than 10,000 tasks generated (%s tasks %s times)",
+                         len(inmap.keys()), self.args.num)
             raise Exception("Too many tasks generated!")
 
+        if self.args.retries > 100:
+            logger.error("More than 100 retries specified, too many!")
+            raise Exception("Too many retries specified")
+
         for k,v in inmap.iteritems():
-            for i in xrange(self.args.repeat):
+            for i in xrange(self.args.num):
                 tasks += [{"isolate_hash" : str(v),
                         "description" : str(k),
                         "timeout": self.args.timeout,
+                        "max_retries": self.args.retries,
                         }]
 
         outmap = {"tasks": tasks}
