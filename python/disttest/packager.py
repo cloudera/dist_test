@@ -1,3 +1,4 @@
+import datetime
 import errno
 import os
 import logging
@@ -12,9 +13,10 @@ logger = logging.getLogger(__name__)
 class Manifest:
     _FILENAME = ".grind_manifest"
     """Identifying information about a git project."""
-    def __init__(self, git_branch):
-        #self.git_hash = git_hash
+    def __init__(self, git_branch, git_hash, timestamp):
+        self.git_hash = git_hash
         self.git_branch = git_branch
+        self.timestamp = timestamp
 
     def write(self, output_file):
         with open(output_file, "wt") as o:
@@ -22,7 +24,7 @@ class Manifest:
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
-            return self.__dict__ == other.__dict__
+            return self.git_branch == other.git_branch
         else:
             return False
 
@@ -45,14 +47,14 @@ class Manifest:
         if retcode != 0:
             raise Exception("Directory %s is not a git repository" % project_root)
 
-        #git_hash = subprocess.check_output("git show-ref --head -s HEAD", shell=True, cwd=project_root)
-        #if git_hash.endswith("\n"):
-        #    git_hash = git_hash[:-1]
+        git_hash = subprocess.check_output("git show-ref --head -s HEAD", shell=True, cwd=project_root)
+        if git_hash.endswith("\n"):
+            git_hash = git_hash[:-1]
         git_branch = subprocess.check_output("git symbolic-ref HEAD", shell=True, cwd=project_root)
         # Trim newlines from the end
         if git_branch.endswith("\n"):
             git_branch = git_branch[:-1]
-        return Manifest(git_branch)
+        return Manifest(git_branch, git_hash, datetime.datetime.now())
 
 class Packager:
 
