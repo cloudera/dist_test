@@ -1,5 +1,17 @@
 #!/usr/bin/env python2.7
 
+# grind
+#
+# This is the CLI that exposes the functionality of the "disttest" module that
+# is part of the grind repository. It also stitches together the functionality
+# that lives in "luci" (a project from Chromium based on the former "isolate"
+# project that packages tests so they can be run standalone) and also
+# "dist_test" (a simple client/server build here at Cloudera for executing
+# isolate tasks).
+#
+# disttest is where most of the interesting implementation lives.
+# grind is mainly argument parsing and configuration management.
+
 import os
 import json
 import sys
@@ -204,7 +216,7 @@ class TestRunner:
                             cache_dir = self.config.grind_cache)
         # Enumerate tests and package test dependencies
         i.package()
-        # Generate one task description json file per test
+        # Generate per-test task descriptions
         i.generate()
 
         # Set up required environment variables
@@ -220,7 +232,8 @@ class TestRunner:
         if self.args.dry_run:
             logging.info("Dry run, skipping isolate batcharchive step")
         else:
-            # Invoke batcharchive on the generated files
+            # Invoke batcharchive on the generated files, dumping task
+            # hashes to a new json file
             cmd = "%s batcharchive --dump-json=%s --"
             hashes_file = os.path.join(self.output_dir, "hashes.json")
             cmd = cmd % (self.config.isolate_path, hashes_file)
@@ -235,10 +248,10 @@ class TestRunner:
             tasks_file = os.path.join(self.output_dir, "run.json")
             self.isolate_hashes_to_tasks(hashes_file, tasks_file)
 
-        # Call the dist_test client
         if self.args.dry_run:
             logging.info("Dry run, skipping test submission")
         else:
+            # Call the dist_test client
             cmd = "%s submit --name %s %s" % \
                     (self.config.dist_test_client_path, \
                      os.path.basename(self.project_dir), \

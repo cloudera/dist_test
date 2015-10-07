@@ -8,11 +8,12 @@
 # and generates ".isolated" files, which can then be submitted
 # and executed on a distributed testing cluster.
 #`
-# Since each test is basically the same as the others in terms of dependencies
-# and how they are invoked, we can use "batch archive" rather than "archive"
-# which is a more efficient way of invoking Luci.
-# The isolate file is parameterized with the test name and anything else.
-# A separate isolated.gen.json file then specifies the different parameters.
+# Since all the tests share the same dependencies and invocation method,
+# we can use "batcharchive" rather than "archive" command
+# to archive all the tests at once. Each batcharchive task is parameterized
+# with the module's pom.xml and the name of the test to run.
+# These parameters are specified in an ".isolated.gen.json" file, one per task,
+# and reference a parent .isolate file.
 #
 # Excerpted from the docs:
 #

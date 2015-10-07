@@ -11,6 +11,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class Manifest:
+    """Identifies a Maven project based on the git branch.
+
+    Also provides additional information like the git hash
+    and when the Manifest was created.
+    """
+
     _FILENAME = ".grind_manifest"
     """Identifying information about a git project."""
     def __init__(self, git_branch, git_hash, timestamp):
@@ -57,6 +63,32 @@ class Manifest:
         return Manifest(git_branch, git_hash, datetime.datetime.now())
 
 class Packager:
+    """Packages the dependencies to run tests of a Maven project into an output folder.
+    This folder is similar to the project source tree, except it only contains compiled
+    artifacts in the target/ directories. Source files are not required to run tests.
+
+    Dependencies come in three types:
+        * Dependencies provided by grind. One example is a pinned version of Maven,
+          to avoid downloading Maven plugins each time.
+        * Built project artifacts, meaning the .jar, test-sources.jar, test.jar, etc.
+        * External dependencies from the local Maven repository, e.g. ~/.m2/repository.
+
+    Provided dependencies are in the `skeleton` folder.
+
+    Project artifacts are enumerated from the MavenProject and copied into the
+    output folder.
+
+    External dependencies are more complicated. We use the Maven dependency plugin
+    to bootstrap a fresh local Maven repository with just the artifacts required
+    for the project. However, since this is really slow, we cache the dependency
+    set of a Maven project based on the local path to the project and the git branch.
+
+    External dependencies are hardlinked into the output folder, which is more
+    efficient than copying.
+
+    Generating the external dependencies for Hadoop can take tens of minutes, but
+    only takes seconds when cached.
+    """
 
     # Call it this for familiarity
     _MAVEN_REL_ROOT = ".m2/repository"
@@ -189,6 +221,7 @@ class Packager:
         Packager.__shell(cmd, self.__project_root)
 
         # TODO: add support for specifying additional dependencies not caught by above
+        # This is required if we ever want to be able to invoke tests in offline mode.
         # Need to make this generalized, per-project config file?
 
     @staticmethod
@@ -233,6 +266,11 @@ class Packager:
         return unzip_cmd
 
     def write_unpack_script(self, name):
+        """Unpack the jars to produce classfiles and test resources required for
+        running tests. This avoids having to upload and then localize potentially
+        thousands of .class files, which takes too long to be useful.
+        """
+
         lines = ["#!/usr/bin/env bash"]
         lines.append("set -e")
 

@@ -34,6 +34,7 @@ Example usage
         [grind]
         isolate_server = http://a1228.halxg.cloudera.com:4242
         dist_test_client_path = ~/dev/dist_test/client.py
+        grind_cache = ~/.grind/cache
         isolate_path = ~/dev/go/bin/isolate
 
 1. cd to your project and build it, e.g.
@@ -62,3 +63,15 @@ Example usage
         $ grind test -m hadoop-hdfs -i TestBalancer\* -i TestDFSClient -i Test\*CLI
 
 See `grind test --help` for more advanced usage instructions.
+
+Developers
+----------
+
+grind is composed of:
+
+- `disttest`, a Python module that does test enumeration, test packaging, and generating metadata for consumption by `luci`
+- `grind`, the CLI command that serves as the user interface for disttest.
+
+See the code comments and docstrings for more detail. `grind` is a good entry point, since it shows how the `disttest` module is used, and how the different projects (`luci`, `dist_test`) fit in.
+
+Use the `run_tests.sh` script to test your changes to `disttest`. New contributions should come with a corresponding unit test.

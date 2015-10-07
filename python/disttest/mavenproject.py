@@ -9,6 +9,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class Module:
+    """Struct-like class for holding information about a Maven module.
+
+    disttest Modules have a notion of hierarchy via the root_module and submodules.
+    These are only a loose approximation of an actual Maven multi-module project,
+    since the hierarchy is based on the folder structure rather than parent poms."""
 
     def __init__(self, root):
         self.root = root
@@ -27,6 +32,21 @@ class ModuleNotFoundException(Exception):
     pass
 
 class MavenProject:
+    """Represents the contents of a Maven project.
+
+    On initialization, a MavenProject walks the provided path looking for Maven
+    modules, artifacts, and test classes.
+
+    Test case enumeration is not guaranteed to match with Surefire.
+    MavenProject uses the default Surefire include pattern to detect files
+    look like test cases (e.g. TestFoo), and parses the classfile to do some
+    basic verification. Inconsistencies arise when there are custom Surefire
+    include and exclude patterns in the pom, or if a class does not actually
+    have any tests in it.
+
+    MavenProject also looks for built jars within the target folders of each module.
+    These are used later when packaging the dependencies to run unit tests.
+    """
 
     def __init__(self, project_root, include_modules=None, include_patterns=None, exclude_patterns=None):
         # Normalize the path
@@ -55,7 +75,9 @@ class MavenProject:
 
 
     def _construct_parent_child_relationships(self):
-        """Construct the parent->child relationship for submodules."""
+        """Construct the parent->child relationship for submodules based on
+        the directory hierarchy. Note that this is different from the Maven
+        notion of parent poms, which are specified in the pom.xml."""
         # Sort the modules based on path length, this guarantees we find parents before children
         path_to_module = {}
         for module in self.modules:
@@ -109,6 +131,9 @@ class MavenProject:
 
 
     def _walk(self):
+        """Walk the project directory to enumerate the modules, test classes,
+        and project artifacts within a MavenProject."""
+
         # Find the modules first, directories that have a pom.xml and a target dir
         for root, dirs, files in os.walk(self.project_root):
             if "pom.xml" in files and "target" in dirs:

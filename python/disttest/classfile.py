@@ -9,15 +9,19 @@ logger = logging.getLogger(__name__)
 
 class Classfile:
     """
-Models a Java classfile. Determines two important pieces of information:
+    Partial representation of a Java classfile. Determines two important
+    pieces of information:
+
     * The package name (based on the directory structure)
     * If the class is abstract or an interface (by parsing the classfile header)
 
-See directory structure documentation at:
-    https://docs.oracle.com/javase/tutorial/java/package/managingfiles.html
+    See directory structure documentation at:
+        https://docs.oracle.com/javase/tutorial/java/package/managingfiles.html
 
-See classfile format reference material at:
-    https://docs.oracle.com/javase/specs/jvms/se7/html/jvms-4.html
+    See classfile format reference material at:
+        https://docs.oracle.com/javase/specs/jvms/se7/html/jvms-4.html
+
+    Additional fields of the classfile format are future work.
     """
 
     def __init__(self, classfile):
