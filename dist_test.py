@@ -107,7 +107,10 @@ class Task(object):
     self.isolate_hash = d['isolate_hash']
     self.description = d['description']
     self.timeout = d.get('timeout', 0)
-    self.retry = d.get('retry', 0)
+    # The task attempt number. Starts at 0.
+    self.attempt = d.get('attempt', 0)
+    # The number of times this task will be retried.
+    # The default value of 0 means the task will not be retried.
     self.max_retries = d.get('max_retries', 0)
 
   def to_json(self):
@@ -117,7 +120,7 @@ class Task(object):
       isolate_hash=self.isolate_hash,
       description=self.description,
       timeout=self.timeout,
-      retry=self.retry,
+      attempt=self.attempt,
       max_retries=self.max_retries)
     return json.dumps(job_struct)
 
@@ -198,7 +201,7 @@ class ResultsStore(object):
       CREATE TABLE IF NOT EXISTS dist_test_tasks (
         job_id varchar(100) not null,
         task_id varchar(100) not null,
-        retry tinyint not null default 0,
+        attempt tinyint not null default 0,
         max_retries tinyint not null default 0,
         description varchar(100) not null,
         submit_timestamp timestamp not null default current_timestamp,
@@ -209,7 +212,7 @@ class ResultsStore(object):
         stdout_abbrev varchar(100),
         stderr_abbrev varchar(100),
         status int,
-        PRIMARY KEY(job_id, task_id, retry),
+        PRIMARY KEY(job_id, task_id, attempt),
         INDEX(submit_timestamp)
       );""")
     self._execute_query("""
@@ -222,27 +225,27 @@ class ResultsStore(object):
 
   def register_task(self, task):
     self._execute_query("""
-      INSERT INTO dist_test_tasks(job_id, task_id, retry, max_retries, description) VALUES (%s, %s, %s, %s, %s)
-    """, [task.job_id, task.task_id, task.retry, task.max_retries, task.description])
+      INSERT INTO dist_test_tasks(job_id, task_id, attempt, max_retries, description) VALUES (%s, %s, %s, %s, %s)
+    """, [task.job_id, task.task_id, task.attempt, task.max_retries, task.description])
 
   def register_tasks(self, tasks):
     tuples = []
     for task in tasks:
-      tuples.append((task.job_id, task.task_id, task.retry, task.max_retries, task.description))
+      tuples.append((task.job_id, task.task_id, task.attempt, task.max_retries, task.description))
     self._execute_query("""
-      INSERT INTO dist_test_tasks(job_id, task_id, retry, max_retries, description) VALUES (%s, %s, %s, %s, %s)
+      INSERT INTO dist_test_tasks(job_id, task_id, attempt, max_retries, description) VALUES (%s, %s, %s, %s, %s)
       """, tuples, use_executemany=True)
 
   def mark_task_running(self, task):
     parms = dict(job_id=task.job_id,
                  task_id=task.task_id,
-                 retry=task.retry,
+                 attempt=task.attempt,
                  hostname=socket.gethostname())
     q = self._execute_query("""
       UPDATE dist_test_tasks SET
         start_timestamp=now(),
         hostname=%(hostname)s
-      WHERE job_id = %(job_id)s AND task_id = %(task_id)s AND retry = %(retry)s
+      WHERE job_id = %(job_id)s AND task_id = %(task_id)s AND attempt = %(attempt)s
       AND status IS NULL""", parms)
     return q.rowcount > 0
 
@@ -274,7 +277,7 @@ class ResultsStore(object):
     parms = dict(result_code=result_code,
                  job_id=task.job_id,
                  task_id=task.task_id,
-                 retry=task.retry,
+                 attempt=task.attempt,
                  output_archive_hash=output_archive_hash,
                  stdout_abbrev=stdout[0:100],
                  stderr_abbrev=stderr[0:100],
@@ -287,7 +290,7 @@ class ResultsStore(object):
         stderr_abbrev = %(stderr_abbrev)s,
         output_archive_hash = %(output_archive_hash)s,
         complete_timestamp = now()
-      WHERE job_id = %(job_id)s AND task_id = %(task_id)s AND retry = %(retry)s""", parms)
+      WHERE job_id = %(job_id)s AND task_id = %(task_id)s AND attempt = %(attempt)s""", parms)
 
     # Update entry for the description in the dist_test_durations table
     self._execute_query("""

@@ -91,8 +91,8 @@ class DistTestServer(object):
   @cherrypy.tools.json_out()
   def retry_task(self, task_json):
     task = dist_test.Task.from_json(task_json)
-    if task.retry < task.max_retries:
-      task.retry += 1
+    if task.attempt < task.max_retries:
+      task.attempt += 1
       self.results_store.register_task(task)
       self.task_queue.submit_task(task)
     return {"status": "SUCCESS"}
@@ -141,15 +141,25 @@ class DistTestServer(object):
     return ret
 
   def _summarize_tasks(self, tasks, json_compatible=False):
-    """Computes aggregate statistics on a set of tasks.
-    json_compatible kwarg is used to request JSON-compatible output, which is used by the client
-    to report progress."""
+    """Computes aggregate statistics on a set of tasks and groups tasks into groups based on task_id.
+    Returns a tuple of (statistics, task_groups).
+
+    The json_compatible kwarg is used to request JSON-compatible output, which is used by the client
+    to report progress.
+
+    The statistics object is a dictionary of string keys to integer values.
+
+    task_groups is a dictionary that maps a string task_id to the list of tasks with that task_id.
+    This is used to group together multiple attempted runs when a task is configured to
+    be retried on failure.
+    Tasks are uniquely identified by the compound key (job_id, task_id, attempt).
+    """
 
     result = {}
     result['total_tasks'] = len(tasks)
     result['finished_tasks'] = len([1 for t in tasks if t['status'] is not None])
     result['running_tasks'] = len([1 for t in tasks if t['status'] is None])
-    result['retried_tasks'] = len([1 for t in tasks if t['retry'] > 0])
+    result['retried_tasks'] = len([1 for t in tasks if t['attempt'] > 0])
     result['timedout_tasks'] = len([1 for t in tasks if t['status'] == -9])
     # Calculating success and failure requires grouping by task_id,
     # since flaky tasks can be automatically retried
@@ -279,7 +289,7 @@ class DistTestServer(object):
       # Success if any of the tasks in group succeeded
       task_to_group_status[task_id]['succeeded'] = any([t['status'] == 0 for t in group])
       # Failed if we hit the max retry and it failed
-      task_to_group_status[task_id]['failed'] = any([t['status'] is not None and t['status'] != 0 for t in group if t['retry'] == t['max_retries']])
+      task_to_group_status[task_id]['failed'] = any([t['status'] is not None and t['status'] != 0 for t in group if t['attempt'] == t['max_retries']])
 
     for t in tasks:
       # stdout/stderr links
@@ -355,7 +365,7 @@ $(document).ready(function() {
         <th>stdout</th>
         <th>stderr</th>
         <th>task</th>
-        <th>retry</th>
+        <th>attempt</th>
       </tr>
     </thead>
     <tbody>
@@ -377,7 +387,7 @@ $(document).ready(function() {
               {% endif %}
           </td>
           <td>{{ task.task_id |e }}</td>
-          <td>{{ task.retry |e }}</td>
+          <td>{{ task.attempt |e }}</td>
         </tr>
       {% endfor %}
       </tbody>

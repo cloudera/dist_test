@@ -127,7 +127,7 @@ class Slave(object):
                                           duration_secs=duration_secs)
 
     # Retry if non-zero exit code and have retries remaining
-    if rc != 0 and task.task.retry < task.task.max_retries:
+    if rc != 0 and task.task.attempt < task.task.max_retries:
       self.submit_retry_task(task.task.to_json())
 
   def submit_retry_task(self, task_json):

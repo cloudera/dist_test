@@ -55,7 +55,7 @@ def do_watch_results(job_id):
 
     print
 
-    # All done, return a UNIX return code accordingly to test result
+    # All done, return a UNIX return code according to test result
     if result['finished_tasks'] == result['total_tasks']:
       if result['failed_groups'] > 0:
         return 88
