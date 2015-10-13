@@ -138,21 +138,12 @@ class CacheRunner:
 
     @staticmethod
     def add_subparser(subparsers):
-        parser = subparsers.add_parser('cache', help="Interact with grind's dependency cache. " + \
-                                       "By default interacts with the cached dependencies of the " + \
-                                       "current working directory.")
+        parser = subparsers.add_parser('cache', help="Interact with grind's dependency cache.")
 
-        group = parser.add_mutually_exclusive_group(required=True)
-
-        group.add_argument('-c', '--clear',
+        parser.add_argument('-c', '--clear',
                             action='store_true',
                             dest="clear",
                             help="Clear cached dependency set.")
-
-        group.add_argument('-l', '--list',
-                            action='store_true',
-                            dest="list",
-                            help="List cached dependency set. This is the default action.")
 
         parser.add_argument('-a', '--all',
                             action='store_true',
@@ -172,7 +163,7 @@ class CacheRunner:
                         % (len(manifests), cache_size)
                 util.prompt_confirm_or_exit(msg)
                 cache.clear_all()
-            elif self.args.list:
+            else:
                 cache.print_manifests(manifests)
         else:
             project_root = os.getcwd()
@@ -187,7 +178,7 @@ class CacheRunner:
                 util.prompt_confirm_or_exit(msg)
                 cache.clear(project_root)
                 print "Cleared cache for %s." % project_root
-            elif self.args.list:
+            else:
                 cache.print_manifests([manifest])
 
 
@@ -405,6 +396,10 @@ def main():
     parser.add_argument('-c', '--config',
                         dest="config_location",
                         help="Location of config file. Default is %s" % Config._default_location)
+    if len(sys.argv[1:]) == 0:
+        parser.print_help()
+        sys.exit(1)
+
     args = parser.parse_args(sys.argv[1:])
 
     config = Config(args.config_location)
@@ -424,7 +419,6 @@ def main():
 def config_subcommand(config, args):
     c = ConfigRunner(config, args)
     c.run()
-
 
 def test_subcommand(config, args):
 
