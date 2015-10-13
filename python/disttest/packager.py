@@ -19,7 +19,8 @@ class Manifest:
 
     _FILENAME = ".grind_manifest"
     """Identifying information about a git project."""
-    def __init__(self, git_branch, git_hash, timestamp):
+    def __init__(self, project_root, git_branch, git_hash, timestamp):
+        self.project_root = project_root
         self.git_hash = git_hash
         self.git_branch = git_branch
         self.timestamp = timestamp
@@ -30,7 +31,8 @@ class Manifest:
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
-            return self.git_branch == other.git_branch
+            return self.project_root == other.project_root and \
+                    self.git_branch == other.git_branch
         else:
             return False
 
@@ -40,8 +42,24 @@ class Manifest:
     def __str__(self):
         return "Manifest(%s)" % str(self.__dict__)
 
+    def pretty_str(self):
+        strs = []
+        if hasattr(self, "project_root"):
+            strs.append(self.project_root)
+        else:
+            strs.append("(Unknown project root)")
+        if hasattr(self, "timestamp"):
+            strs.append("\tDate: %s" % self.timestamp.strftime("%c"))
+        if hasattr(self, "git_branch"):
+            strs.append("\tBranch: %s" % self.git_branch)
+        if hasattr(self, "git_hash"):
+            strs.append("\tHash: %s" % self.git_hash)
+
+        return "\n".join(strs)
+
     @staticmethod
     def read(input_file):
+        logger.debug("Reading manifest at %s", input_file)
         if not os.path.isfile(input_file):
             return None
         with open(input_file, "r") as o:
@@ -60,7 +78,30 @@ class Manifest:
         # Trim newlines from the end
         if git_branch.endswith("\n"):
             git_branch = git_branch[:-1]
-        return Manifest(git_branch, git_hash, datetime.datetime.now())
+        return Manifest(os.path.normpath(project_root), git_branch, git_hash, datetime.datetime.now())
+
+class CacheManager:
+    """Interface for interacting with cached dependency sets (list, clear, etc)."""
+
+    def __init__(self, cache_dir):
+        self.cache_dir = cache_dir
+
+    def list(self, project_root):
+        return Manifest.read(os.path.join(self.cache_dir + project_root, Manifest._FILENAME))
+
+    def list_all(self):
+        manifests = list()
+        for root, dirs, files in os.walk(self.cache_dir):
+            for f in files:
+                if f == Manifest._FILENAME:
+                    manifests.append(Manifest.read(os.path.join(root, f)))
+        return manifests
+
+    def clear(self, project_root):
+        shutil.rmtree(self.cache_dir + project_root)
+
+    def clear_all(self):
+        shutil.rmtree(self.cache_dir)
 
 class Packager:
     """Packages the dependencies to run tests of a Maven project into an output folder.

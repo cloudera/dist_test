@@ -81,6 +81,38 @@ class Config:
     def write_config(self, outfile):
         self.config.write(outfile)
 
+class Util:
+    @staticmethod
+    def prompt_confirmation(msg):
+        """Prompt user for confirmation. Returns True if yes, False if no. Defaults to no."""
+        sys.stdout.write("%s (y/N): " % msg)
+        choice = raw_input().lower()
+        if choice == "y":
+            return True
+        return False
+
+    @staticmethod
+    def du(path):
+        """Return the size of the file or directory."""
+
+        if not os.path.exists(path):
+            raise Exception("Path does not exist: " + path)
+        if os.path.isfile(path):
+            return os.path.getsize(path)
+        else:
+            total = 0
+            for root, dirs, files in os.walk(path):
+                total += sum([os.path.getsize(os.path.join(root, f)) for f in files])
+            return total
+
+    @staticmethod
+    def sizeof_fmt(num, suffix='B'):
+        for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
+            if abs(num) < 1024.0:
+                return "%3.1f%s%s" % (num, unit, suffix)
+            num /= 1024.0
+        return "%.1f%s%s" % (num, 'Yi', suffix)
+
 class ConfigRunner:
     """Config subcommand."""
 
@@ -110,10 +142,8 @@ class ConfigRunner:
             self.config.load_defaults()
             # If overwriting, prompt for confirmation first
             if self.args.write:
-                sys.stdout.write("Do you want to overwrite %s with sample config file (y/N): ")
-                choice = raw_input().lower()
-                if choice != "y":
-                    print("Aborting")
+                if not Util.prompt_confirmation("Do you want to overwrite %s with sample config file?"):
+                    print "Aborted"
                     return
                 config_dir = os.path.dirname(self.config.location)
                 if not os.path.isdir(config_dir):
@@ -128,6 +158,71 @@ class ConfigRunner:
         self.config.read_config()
         self.config.write_config(sys.stdout)
 
+
+class CacheRunner:
+    """Cache subcommand."""
+
+    def __init__(self, config, args):
+        self.args = args
+        self.project_dir = os.getcwd()
+        self.config = config
+        self.config.read_config()
+
+    @staticmethod
+    def add_subparser(subparsers):
+        parser = subparsers.add_parser('cache', help="Interact with grind's dependency cache. " + \
+                                       "By default interacts with the cached dependencies of the " + \
+                                       "current working directory.")
+
+        parser.add_argument('-c', '--clear',
+                            action='store_true',
+                            dest="clear",
+                            help="Clear cached dependency set.")
+
+        parser.add_argument('-l', '--list',
+                            action='store_true',
+                            dest="list",
+                            help="List cached dependency set. This is the default action.")
+
+        parser.add_argument('-a', '--all',
+                            action='store_true',
+                            dest="all",
+                            help="Operate on all cached dependency sets.")
+
+    def run(self):
+        from disttest import packager
+        cache = packager.CacheManager(self.config.grind_cache)
+        project_root = os.getcwd()
+
+        if self.args.all:
+            manifests = cache.list_all()
+            if self.args.clear:
+                msg = "Are you sure you want to clear all %s dependency sets (%s)?"\
+                        % (len(manifests), Util.sizeof_fmt(Util.du(cache.cache_dir)))
+                if not Util.prompt_confirmation(msg):
+                    print "Aborted"
+                    sys.exit(1)
+                cache.clear_all()
+            else:
+                print "\n".join([m.pretty_str() for m in manifests])
+        else:
+            project_root = os.getcwd()
+            manifest = cache.list(project_root)
+            if manifest is None:
+                sys.stderr.write("No cached manifest found for %s\n" % project_root)
+                sys.exit(2)
+            if self.args.clear:
+                msg = "Are you sure you want to clear dependency set for %s (%s)?"\
+                        % (project_root, Util.sizeof_fmt(Util.du(cache.cache_dir + project_root)))
+                if not Util.prompt_confirmation(msg):
+                    print "Aborted"
+                    sys.exit(1)
+                cache.clear(project_root)
+                print "Cleared cache for %s." % project_root
+            else:
+                print manifest.pretty_str()
+
+
 class TestRunner:
     """Test subcommand."""
 
@@ -138,7 +233,6 @@ class TestRunner:
         self.config.read_config()
         self.output_dir = tempfile.mkdtemp(prefix="grind.")
         logger.debug("Created temp directory %s", self.output_dir)
-        pass
 
     @staticmethod
     def add_subparser(subparsers):
@@ -334,6 +428,7 @@ def main():
     subparsers = parser.add_subparsers(title='subcommands', dest='subparser_name')
     TestRunner.add_subparser(subparsers)
     ConfigRunner.add_subparser(subparsers)
+    CacheRunner.add_subparser(subparsers)
 
     # Global argument
     parser.add_argument('-v', '--verbose',
@@ -353,6 +448,7 @@ def main():
     subcommands = {
         "test": test_subcommand,
         "config": config_subcommand,
+        "cache": cache_subcommand,
     }
 
     subcommands[args.subparser_name](config, args)
@@ -370,6 +466,9 @@ def test_subcommand(config, args):
     finally:
         runner.cleanup()
 
+def cache_subcommand(config, args):
+    runner = CacheRunner(config, args)
+    runner.run()
 
 if __name__ == "__main__":
     main()
