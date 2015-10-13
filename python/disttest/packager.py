@@ -7,6 +7,8 @@ import shlex, subprocess
 import shutil
 import tempfile
 
+import util
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -42,21 +44,6 @@ class Manifest:
     def __str__(self):
         return "Manifest(%s)" % str(self.__dict__)
 
-    def pretty_str(self):
-        strs = []
-        if hasattr(self, "project_root"):
-            strs.append(self.project_root)
-        else:
-            strs.append("(Unknown project root)")
-        if hasattr(self, "timestamp"):
-            strs.append("\tDate: %s" % self.timestamp.strftime("%c"))
-        if hasattr(self, "git_branch"):
-            strs.append("\tBranch: %s" % self.git_branch)
-        if hasattr(self, "git_hash"):
-            strs.append("\tHash: %s" % self.git_hash)
-
-        return "\n".join(strs)
-
     @staticmethod
     def read(input_file):
         logger.debug("Reading manifest at %s", input_file)
@@ -86,15 +73,23 @@ class CacheManager:
     def __init__(self, cache_dir):
         self.cache_dir = cache_dir
 
+    @staticmethod
+    def __read_with_size(project_root):
+        manifest = Manifest.read(os.path.join(project_root, Manifest._FILENAME))
+        manifest.size = util.du(project_root)
+        return manifest
+
     def list(self, project_root):
-        return Manifest.read(os.path.join(self.cache_dir + project_root, Manifest._FILENAME))
+        cached_project_root = self.cache_dir + project_root
+        return CacheManager.__read_with_size(cached_project_root)
 
     def list_all(self):
         manifests = list()
         for root, dirs, files in os.walk(self.cache_dir):
             for f in files:
                 if f == Manifest._FILENAME:
-                    manifests.append(Manifest.read(os.path.join(root, f)))
+                    manifest = CacheManager.__read_with_size(root)
+                    manifests.append(manifest)
         return manifests
 
     def clear(self, project_root):
@@ -102,6 +97,29 @@ class CacheManager:
 
     def clear_all(self):
         shutil.rmtree(self.cache_dir)
+
+    @staticmethod
+    def print_manifests(manifests):
+        print "\n".join([CacheManager._pretty_str(m) for m in manifests])
+
+    @staticmethod
+    def _pretty_str(manifest):
+        strs = []
+        if hasattr(manifest, "project_root"):
+            strs.append(manifest.project_root)
+        else:
+            strs.append("(Unknown project root)")
+        if hasattr(manifest, "timestamp"):
+            strs.append("\tDate: %s" % manifest.timestamp.strftime("%c"))
+        if hasattr(manifest, "size"):
+            strs.append("\tSize: %s" % util.sizeof_fmt(manifest.size))
+        if hasattr(manifest, "git_branch"):
+            strs.append("\tBranch: %s" % manifest.git_branch)
+        if hasattr(manifest, "git_hash"):
+            strs.append("\tHash: %s" % manifest.git_hash)
+
+        return "\n".join(strs)
+
 
 class Packager:
     """Packages the dependencies to run tests of a Maven project into an output folder.
