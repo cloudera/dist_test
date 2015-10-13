@@ -1,6 +1,7 @@
 import os
 import logging
 import fnmatch
+import sys
 import re
 
 import classfile
@@ -138,6 +139,10 @@ class MavenProject:
         for root, dirs, files in os.walk(self.project_root):
             if "pom.xml" in files and "target" in dirs:
                 self.modules.append(Module(os.path.normpath(root)))
+
+        if len(self.modules) == 0:
+            logger.error("No modules with target directories found. Did you forget to build the project?")
+            sys.exit(1)
 
         self._construct_parent_child_relationships()
 
