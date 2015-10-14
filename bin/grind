@@ -39,7 +39,7 @@ class Config:
         "dist_test_client_path": os.path.join("~", "dev", "dist_test", "client.py"),
     }
     __optional = {
-        "grind_cache": os.path.join("~", ".grind", "cache"),
+        "grind_cache_dir": os.path.join("~", ".grind", "cache"),
         "grind_temp_dir": "/tmp",
     }
 
@@ -79,7 +79,7 @@ class Config:
                 raise Exception("Config key %s value %s does not exist!" \
                                 % (k, self.__dict__[k]))
         # Make grind cache directory if it does not exist
-        for k in ["grind_cache", "grind_temp_dir"]:
+        for k in ["grind_cache_dir", "grind_temp_dir"]:
             self.__dict__[k] = os.path.expanduser(self.config.get(Config.__section, k))
             if not os.path.exists(self.__dict__[k]):
                 os.makedirs(self.__dict__[k])
@@ -169,7 +169,7 @@ class CacheRunner:
 
     def run(self):
         from disttest import packager
-        cache = packager.CacheManager(self.config.grind_cache)
+        cache = packager.CacheManager(self.config.grind_cache_dir)
         project_root = os.getcwd()
 
         if self.args.all:
@@ -283,7 +283,7 @@ class TestRunner:
                             include_modules = self.args.include_modules,
                             include_patterns = self.args.include_patterns,
                             exclude_patterns = self.args.exclude_patterns,
-                            cache_dir = self.config.grind_cache)
+                            cache_dir = self.config.grind_cache_dir)
         # Enumerate tests and package test dependencies
         i.package()
         # Generate per-test task descriptions
