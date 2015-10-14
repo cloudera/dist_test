@@ -33,11 +33,14 @@ class Config:
     """Config class that uses ConfigParser"""
 
     __section = "grind"
-    __defaults = {
+    __required = {
         "isolate_server": "http://a1228.halxg.cloudera.com:4242",
         "isolate_path": os.path.join("~", "dev", "go", "bin", "isolate"),
         "dist_test_client_path": os.path.join("~", "dev", "dist_test", "client.py"),
+    }
+    __optional = {
         "grind_cache": os.path.join("~", ".grind", "cache"),
+        "grind_temp_dir": "/tmp",
     }
 
     _default_location = os.path.join(os.environ['HOME'], ".grind", "grind.cfg")
@@ -57,9 +60,18 @@ class Config:
         # Read config from file
         self.config.read(self.location)
         logging.info("Read config from location %s", self.location)
-        # Validate
-        for key in self.__defaults.keys():
-            self.config.get(Config.__section, key)
+        # Validate required options
+        for key in self.__required.keys():
+            try:
+                self.config.get(Config.__section, key)
+            except ConfigParser.NoOptionError:
+                logger.error("Missing required config key %s in section %s", key, Config.__section)
+        # Use defaults for optional options if not present
+        for key, value in self.__optional.iteritems():
+            try:
+                self.config.get(Config.__section, key)
+            except ConfigParser.NoOptionError:
+                self.config.set(Config.__section, key, value)
         # Check that paths to required binaries actually exist
         for k in ["isolate_path", "dist_test_client_path"]:
             self.__dict__[k] = os.path.expanduser(self.config.get(Config.__section, k))
@@ -67,16 +79,21 @@ class Config:
                 raise Exception("Config key %s value %s does not exist!" \
                                 % (k, self.__dict__[k]))
         # Make grind cache directory if it does not exist
-        for k in ["grind_cache"]:
+        for k in ["grind_cache", "grind_temp_dir"]:
             self.__dict__[k] = os.path.expanduser(self.config.get(Config.__section, k))
             if not os.path.exists(self.__dict__[k]):
                 os.makedirs(self.__dict__[k])
         for k in ["isolate_server"]:
             self.__dict__[k] = self.config.get(Config.__section, k)
 
+        # Remove the DEFAULT section now that we're done parsing
+        self.config.remove_section("DEFAULT")
+
     def load_defaults(self):
         self.config.add_section(Config.__section)
-        for k,v in Config.__defaults.iteritems():
+        for k,v in Config.__required.iteritems():
+            self.config.set(Config.__section, k, v)
+        for k,v in Config.__optional.iteritems():
             self.config.set(Config.__section, k, v)
 
     def write_config(self, outfile):
@@ -120,7 +137,7 @@ class ConfigRunner:
                     self.config.write_config(out)
                 print "Wrote sample config file to", self.config.location
             else:
-                config.write_config(sys.stdout)
+                self.config.write_config(sys.stdout)
             return
         # Else, load and print the found config file
         self.config.read_config()
@@ -190,7 +207,7 @@ class TestRunner:
         self.project_dir = os.getcwd()
         self.config = config
         self.config.read_config()
-        self.output_dir = tempfile.mkdtemp(prefix="grind.")
+        self.output_dir = tempfile.mkdtemp(prefix="grind.", dir=self.config.grind_temp_dir)
         logger.debug("Created temp directory %s", self.output_dir)
 
     @staticmethod
