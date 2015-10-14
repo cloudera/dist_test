@@ -353,21 +353,26 @@ class TestRunner:
         # Do a sanity check before generating task list,
         # a giant num parameter could cause trouble.
         if num_tasks > 10000:
-            logger.error("More than 10,000 tasks generated (%s tasks %s times)",
+            logger.error("More than 10,000 tasks generated (%s tasks %s times), too many tasks!",
                          len(inmap.keys()), self.args.num)
-            raise Exception("Too many tasks generated!")
+            sys.exit(1)
 
         if self.args.retries > 100:
             logger.error("More than 100 retries specified, too many!")
-            raise Exception("Too many retries specified")
+            sys.exit(1)
+        if self.args.retries < 0:
+            logger.error("Cannot specify a negative number of retries!")
+            sys.exit(1)
 
         for k,v in inmap.iteritems():
             for i in xrange(self.args.num):
-                tasks += [{"isolate_hash" : str(v),
+                task = {"isolate_hash" : str(v),
                         "description" : str(k),
                         "timeout": self.args.timeout,
-                        "max_retries": self.args.retries,
-                        }]
+                        }
+                if self.args.retries > 0:
+                    task["max_retries"] = self.args.retries
+                tasks.append(task)
 
         outmap = {"tasks": tasks}
 
