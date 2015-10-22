@@ -11,9 +11,10 @@ import urllib2
 import simplejson
 import time
 
-TEST_MASTER = "http://a1228.halxg.cloudera.com:8081"
+TEST_MASTER = os.environ.get("DIST_TEST_MASTER", "http://a1228.halxg.cloudera.com:8081")
 
 RED = "\x1b[31m"
+YELLOW = "\x1b[33m"
 RESET = "\x1b[m"
 
 def generate_job_id():
@@ -42,14 +43,23 @@ def do_watch_results(job_id):
     print "%d/%d tasks complete" % \
         (result['finished_tasks'], result['total_tasks']),
 
-    if result['failed_tasks']:
+    if result['failed_groups']:
       print RED,
-      print "(%d failed)" % result['failed_tasks'],
+      print "(%d failed)" % result['failed_groups'],
       print RESET,
+
+    if result['retried_tasks']:
+      print YELLOW,
+      print "(%d retried)" % result['retried_tasks'],
+      print RESET,
+
     print
 
+    # All done, return a UNIX return code according to test result
     if result['finished_tasks'] == result['total_tasks']:
-      break
+      if result['failed_groups'] > 0:
+        return 88
+      return 0
     time.sleep(0.5)
 
 def save_last_job_id(job_id):
@@ -99,7 +109,7 @@ def submit(argv):
     sys.exit(1)
 
   job_id = submit_job_json(options.name, file(args[0]).read())
-  do_watch_results(job_id)
+  sys.exit(do_watch_results(job_id))
 
 def get_job_id_from_args(command, args):
   if len(args) == 1:
@@ -114,7 +124,7 @@ def get_job_id_from_args(command, args):
 
 def watch(argv):
   job_id = get_job_id_from_args("watch", argv)
-  do_watch_results(job_id)
+  sys.exit(do_watch_results(job_id))
 
 def fetch_failed_tasks(job_id):
   url = TEST_MASTER + "/failed_tasks?" + urllib.urlencode([("job_id", job_id)])

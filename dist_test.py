@@ -1,6 +1,7 @@
 import beanstalkc
 import boto
-from ConfigParser import ConfigParser
+from ConfigParser import SafeConfigParser
+import errno
 import logging
 import MySQLdb
 import os
@@ -23,7 +24,11 @@ class Config(object):
     if path is None:
       path = os.path.join(os.getenv("HOME"), ".dist_test.cnf")
     logging.info("Reading configuration from %s", path)
-    self.config = ConfigParser()
+    # Populate parser with default values
+    defaults = {
+      "log_dir" : os.path.join(os.path.dirname(os.path.realpath(__file__)), "logs")
+    }
+    self.config = SafeConfigParser(defaults)
     self.config.read(path)
 
     # Isolate settings
@@ -44,6 +49,28 @@ class Config(object):
 
     # Beanstalk settings
     self.BEANSTALK_HOST = self._get_with_env_default('beanstalk', 'host', 'BEANSTALK_HOST')
+
+    # dist_test settings
+    if not self.config.has_section('dist_test'):
+      self.config.add_section('dist_test')
+    self.DIST_TEST_MASTER = self._get_with_env_default('dist_test', 'master', "DIST_TEST_MASTER")
+    self.log_dir = self.config.get('dist_test', 'log_dir')
+    # Make the log directory if it doesn't exist
+    Config.mkdir_p(self.log_dir)
+
+    self.ACCESS_LOG = os.path.join(self.log_dir, "access.log")
+    self.ERROR_LOG = os.path.join(self.log_dir, "error.log")
+
+  @staticmethod
+  def mkdir_p(path):
+    """Similar to mkdir -p, make a directory ignoring EEXIST"""
+    try:
+      os.makedirs(path)
+    except OSError as exc:
+      if exc.errno == errno.EEXIST and os.path.isdir(path):
+        pass
+      else:
+        raise
 
   def _get_with_env_default(self, section, option, env_key):
     if self.config.has_option(section, option):
@@ -80,6 +107,11 @@ class Task(object):
     self.isolate_hash = d['isolate_hash']
     self.description = d['description']
     self.timeout = d.get('timeout', 0)
+    # The task attempt number. Starts at 0.
+    self.attempt = d.get('attempt', 0)
+    # The number of times this task will be retried.
+    # The default value of 0 means the task will not be retried.
+    self.max_retries = d.get('max_retries', 0)
 
   def to_json(self):
     job_struct = dict(
@@ -87,7 +119,9 @@ class Task(object):
       task_id=self.task_id,
       isolate_hash=self.isolate_hash,
       description=self.description,
-      timeout=self.timeout)
+      timeout=self.timeout,
+      attempt=self.attempt,
+      max_retries=self.max_retries)
     return json.dumps(job_struct)
 
 class ReservedTask(object):
@@ -159,6 +193,7 @@ class ResultsStore(object):
       self.config.MYSQL_PWD,
       self.config.MYSQL_DB)
     logging.info("Connected to MySQL at %s" % self.config.MYSQL_HOST)
+    self.thread_local.db.autocommit(True)
     return self.thread_local.db
 
   def _ensure_tables(self):
@@ -166,6 +201,8 @@ class ResultsStore(object):
       CREATE TABLE IF NOT EXISTS dist_test_tasks (
         job_id varchar(100) not null,
         task_id varchar(100) not null,
+        attempt tinyint not null default 0,
+        max_retries tinyint not null default 0,
         description varchar(100) not null,
         submit_timestamp timestamp not null default current_timestamp,
         start_timestamp timestamp,
@@ -175,7 +212,7 @@ class ResultsStore(object):
         stdout_abbrev varchar(100),
         stderr_abbrev varchar(100),
         status int,
-        PRIMARY KEY(job_id, task_id),
+        PRIMARY KEY(job_id, task_id, attempt),
         INDEX(submit_timestamp)
       );""")
     self._execute_query("""
@@ -188,26 +225,27 @@ class ResultsStore(object):
 
   def register_task(self, task):
     self._execute_query("""
-      INSERT INTO dist_test_tasks(job_id, task_id, description) VALUES (%s, %s, %s)
-    """, [task.job_id, task.task_id, task.description])
-  
+      INSERT INTO dist_test_tasks(job_id, task_id, attempt, max_retries, description) VALUES (%s, %s, %s, %s, %s)
+    """, [task.job_id, task.task_id, task.attempt, task.max_retries, task.description])
+
   def register_tasks(self, tasks):
     tuples = []
     for task in tasks:
-      tuples.append((task.job_id, task.task_id, task.description))
+      tuples.append((task.job_id, task.task_id, task.attempt, task.max_retries, task.description))
     self._execute_query("""
-      INSERT INTO dist_test_tasks(job_id, task_id, description) VALUES (%s, %s, %s)
+      INSERT INTO dist_test_tasks(job_id, task_id, attempt, max_retries, description) VALUES (%s, %s, %s, %s, %s)
       """, tuples, use_executemany=True)
 
   def mark_task_running(self, task):
     parms = dict(job_id=task.job_id,
                  task_id=task.task_id,
+                 attempt=task.attempt,
                  hostname=socket.gethostname())
     q = self._execute_query("""
       UPDATE dist_test_tasks SET
         start_timestamp=now(),
         hostname=%(hostname)s
-      WHERE job_id = %(job_id)s AND task_id = %(task_id)s
+      WHERE job_id = %(job_id)s AND task_id = %(task_id)s AND attempt = %(attempt)s
       AND status IS NULL""", parms)
     return q.rowcount > 0
 
@@ -239,6 +277,7 @@ class ResultsStore(object):
     parms = dict(result_code=result_code,
                  job_id=task.job_id,
                  task_id=task.task_id,
+                 attempt=task.attempt,
                  output_archive_hash=output_archive_hash,
                  stdout_abbrev=stdout[0:100],
                  stderr_abbrev=stderr[0:100],
@@ -251,7 +290,7 @@ class ResultsStore(object):
         stderr_abbrev = %(stderr_abbrev)s,
         output_archive_hash = %(output_archive_hash)s,
         complete_timestamp = now()
-      WHERE job_id = %(job_id)s AND task_id = %(task_id)s""", parms)
+      WHERE job_id = %(job_id)s AND task_id = %(task_id)s AND attempt = %(attempt)s""", parms)
 
     # Update entry for the description in the dist_test_durations table
     self._execute_query("""
@@ -281,7 +320,7 @@ class ResultsStore(object):
 
   def fetch_task_rows_for_job(self, job_id):
     c = self._execute_query(
-      "SELECT * FROM dist_test_tasks WHERE job_id = %(job_id)s ORDER BY submit_timestamp",
+      "SELECT * FROM dist_test_tasks WHERE job_id = %(job_id)s ORDER BY task_id, submit_timestamp",
       dict(job_id=job_id))
     return c.fetchall()
 

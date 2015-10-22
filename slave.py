@@ -7,6 +7,8 @@ import errno
 import fcntl
 import logging
 import os
+import urllib
+import urllib2
 import re
 import select
 try:
@@ -123,6 +125,18 @@ class Slave(object):
                                           stdout=stdout,
                                           stderr=stderr,
                                           duration_secs=duration_secs)
+
+    # Retry if non-zero exit code and have retries remaining
+    if rc != 0 and task.task.attempt < task.task.max_retries:
+      self.submit_retry_task(task.task.to_json())
+
+  def submit_retry_task(self, task_json):
+    form_data = urllib.urlencode({'task_json': task_json})
+    url = self.config.DIST_TEST_MASTER + "/retry_task"
+    result_str = urllib2.urlopen(url, data=form_data).read()
+    result = json.loads(result_str)
+    if result.get('status') != 'SUCCESS':
+      sys.err.println("Unable to submit retry task: %s" % repr(result))
 
   def run(self):
     while True:
