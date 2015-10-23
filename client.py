@@ -11,7 +11,11 @@ import urllib2
 import simplejson
 import time
 
-TEST_MASTER = os.environ.get("DIST_TEST_MASTER", "http://a1228.halxg.cloudera.com:8081")
+import config
+
+config = config.Config()
+config.ensure_dist_test_configured()
+TEST_MASTER = config.DIST_TEST_MASTER
 
 RED = "\x1b[31m"
 YELLOW = "\x1b[33m"

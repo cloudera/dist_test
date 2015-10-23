@@ -3,7 +3,6 @@
 import base64
 import cherrypy
 import datetime
-import dist_test
 import logging
 import os
 from jinja2 import Template
@@ -12,6 +11,9 @@ import simplejson
 import StringIO
 import gzip
 from collections import defaultdict
+
+import config
+import dist_test
 
 TRACE_HTML = os.path.join(os.path.dirname(__file__), "trace.html")
 
@@ -441,7 +443,7 @@ $(document).ready(function() {
 
 if __name__ == "__main__":
   logging.basicConfig(level=logging.INFO)
-  config = dist_test.Config()
+  config = config.Config()
   logging.info("Writing access logs to %s", config.ACCESS_LOG)
   logging.info("Writing error logs to %s", config.ERROR_LOG)
   cherrypy.config.update({

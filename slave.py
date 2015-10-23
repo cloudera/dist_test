@@ -2,7 +2,6 @@
 
 import beanstalkc
 import boto
-import dist_test
 import errno
 import fcntl
 import logging
@@ -18,12 +17,17 @@ except:
 import subprocess
 import time
 
+import config
+import dist_test
+
 RUN_ISOLATED_OUT_RE = re.compile(r'\[run_isolated_out_hack\](.+?)\[/run_isolated_out_hack\]',
                                  re.DOTALL)
 
 class Slave(object):
   def __init__(self):
-    self.config = dist_test.Config()
+    self.config = config.Config()
+    self.config.ensure_isolate_configured()
+    self.config.ensure_dist_test_configured()
     self.task_queue = dist_test.TaskQueue(self.config)
     self.results_store = dist_test.ResultsStore(self.config)
     self.cache_dir = self._get_exclusive_cache_dir()
