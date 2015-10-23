@@ -1,7 +1,7 @@
 #!/bin/bash
 
 virtualenv slave-env
-for package in beanstalkc MySQL-python boto ; do
+for package in beanstalkc PyYAML MySQL-python boto ; do
   ./slave-env/bin/pip install $package
 done
 virtualenv --relocatable slave-env
