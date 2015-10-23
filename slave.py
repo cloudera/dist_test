@@ -17,15 +17,19 @@ except:
 import subprocess
 import time
 
-import config
+from config import Config
 import dist_test
 
 RUN_ISOLATED_OUT_RE = re.compile(r'\[run_isolated_out_hack\](.+?)\[/run_isolated_out_hack\]',
                                  re.DOTALL)
+LOG = None
 
 class Slave(object):
-  def __init__(self):
-    self.config = config.Config()
+
+  global LOG
+
+  def __init__(self, config):
+    self.config = config
     self.config.ensure_isolate_configured()
     self.config.ensure_dist_test_configured()
     self.task_queue = dist_test.TaskQueue(self.config)
@@ -42,12 +46,12 @@ class Slave(object):
         fcntl.lockf(self._lockfile.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
       except IOError, e:
         if e.errno in (errno.EACCES, errno.EAGAIN):
-          logging.info("Another slave already using cache dir %s", dir)
+          LOG.info("Another slave already using cache dir %s", dir)
           self._lockfile.close()
           continue
         raise
       # Succeeded in locking
-      logging.info("Acquired lock on cache dir %s", dir)
+      LOG.info("Acquired lock on cache dir %s", dir)
       return dir
     raise Exception("Unable to lock any cache dir %s.<int>" %
         self.config.ISOLATE_CACHE_DIR)
@@ -64,9 +68,9 @@ class Slave(object):
            "--verbose",
            "--hash", task.task.isolate_hash]
     if not self.results_store.mark_task_running(task.task):
-      logging.info("Task %s canceled", task.task.description)
+      LOG.info("Task %s canceled", task.task.description)
       return
-    logging.info("Running command: %s", repr(cmd))
+    LOG.info("Running command: %s", repr(cmd))
     p = subprocess.Popen(
       cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     pipes = [p.stdout, p.stderr]
@@ -92,15 +96,15 @@ class Slave(object):
         break
       now = time.time()
       if timeout > 0 and now > kill_term_time:
-        logging.info("Task timed out: " + task.task.description)
+        LOG.info("Task timed out: " + task.task.description)
         stderr += "\n------\nKilling task after %d seconds" % timeout
         p.terminate()
       if timeout > 0 and now > kill_kill_time:
-        logging.info("Task did not exit after SIGTERM. Sending SIGKILL")
+        LOG.info("Task did not exit after SIGTERM. Sending SIGKILL")
         p.kill()
 
       if time.time() - last_touch > 10:
-        logging.info("Still running: " + task.task.description)
+        LOG.info("Still running: " + task.task.description)
         try:
           bs_job.touch()
         except:
@@ -147,21 +151,27 @@ class Slave(object):
       try:
         task = self.task_queue.reserve_task()
       except Exception, e:
-        logging.warning("Failed to reserve job: %s" % str(e))
+        LOG.warning("Failed to reserve job: %s" % str(e))
         time.sleep(1)
         continue
-      logging.info("got task: %s", task.task.to_json())
+      LOG.info("got task: %s", task.task.to_json())
       self.run_task(task, task.bs_elem)
       try:
         task.bs_elem.delete()
       except Exception, e:
-        logging.warning("Failed to delete job: %s" % str(e))
+        LOG.warning("Failed to delete job: %s" % str(e))
         continue
 
 
 def main():
-  logging.basicConfig(level=logging.INFO)
-  Slave().run()
+  global LOG
+
+  config = Config()
+  LOG = logging.getLogger('dist_test.slave')
+  dist_test.configure_logger(LOG, config.SLAVE_LOG)
+
+  LOG.info("Starting slave")
+  Slave(config).run()
 
 if __name__ == "__main__":
   main()

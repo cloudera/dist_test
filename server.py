@@ -12,12 +12,17 @@ import StringIO
 import gzip
 from collections import defaultdict
 
-import config
+from config import Config
 import dist_test
 
 TRACE_HTML = os.path.join(os.path.dirname(__file__), "trace.html")
 
+LOG = None
+
 class DistTestServer(object):
+
+  global LOG
+
   def __init__(self, config):
     self.config = config
     self.task_queue = dist_test.TaskQueue(self.config)
@@ -442,15 +447,18 @@ $(document).ready(function() {
 
 
 if __name__ == "__main__":
-  logging.basicConfig(level=logging.INFO)
-  config = config.Config()
-  logging.info("Writing access logs to %s", config.ACCESS_LOG)
-  logging.info("Writing error logs to %s", config.ERROR_LOG)
+  config = Config()
+  LOG = logging.getLogger('dist_test.server')
+  dist_test.configure_logger(LOG, config.SERVER_LOG)
+
+  LOG.info("Writing access logs to %s", config.SERVER_ACCESS_LOG)
+  LOG.info("Writing error logs to %s", config.SERVER_ERROR_LOG)
   cherrypy.config.update({
     'server.socket_host': '0.0.0.0',
     'server.socket_port': 8081,
-    'log.access_file': config.ACCESS_LOG,
-    'log.error_file': config.ERROR_LOG,
+    'log.access_file': config.SERVER_ACCESS_LOG,
+    'log.error_file': config.SERVER_ERROR_LOG,
   })
+  LOG.info("Starting server")
   cherrypy.quickstart(DistTestServer(config))
 

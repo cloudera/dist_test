@@ -279,3 +279,14 @@ class ResultsStore(object):
     # incorrectly if you pass a unicode string.
     k.set_metadata('Content-Disposition', str('inline; filename=%s' % filename))
     k.set_contents_from_string(data, reduced_redundancy=True)
+
+def configure_logger(logger, filename):
+  handlers = []
+  handlers.append(logging.StreamHandler())
+  handlers.append(logging.FileHandler(filename))
+  formatter = logging.Formatter("%(asctime)-15s %(levelname)-8s %(message)s")
+  for handler in handlers:
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+  logger.setLevel(logging.INFO)
+

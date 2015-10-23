@@ -67,8 +67,10 @@ class Config(object):
     # Make the log directory if it doesn't exist
     Config.mkdir_p(self.log_dir)
 
-    self.ACCESS_LOG = os.path.join(self.log_dir, "access.log")
-    self.ERROR_LOG = os.path.join(self.log_dir, "error.log")
+    self.SERVER_ACCESS_LOG = os.path.join(self.log_dir, "server-access.log")
+    self.SERVER_ERROR_LOG = os.path.join(self.log_dir, "server-error.log")
+    self.SERVER_LOG = os.path.join(self.log_dir, "server.log")
+    self.SLAVE_LOG = os.path.join(self.log_dir, "slave.log")
 
   @staticmethod
   def mkdir_p(path):
