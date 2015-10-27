@@ -33,6 +33,9 @@ class Manifest:
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
+            if not "project_root" in other.__dict__.keys() or \
+                not "git_branch" in other.__dict__.keys():
+                    raise Exception("Cached manifest is missing required attributes. Try running `grind cache --clear`?")
             return self.project_root == other.project_root and \
                     self.git_branch == other.git_branch
         else:
