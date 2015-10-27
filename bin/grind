@@ -336,8 +336,6 @@ class TestRunner:
                 else:
                     raise Exception("dist_test client submit failed")
 
-        logging.info("Success!")
-
     def cleanup(self):
         if self.args.leak_temp:
             logger.info("Leaking temp directory %s", self.output_dir)
