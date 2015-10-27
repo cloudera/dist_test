@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import base64
+import cgi
 import cherrypy
 import datetime
 import logging
@@ -68,6 +69,13 @@ class DistTestServer(object):
       trace = f.read()
       trace = trace.replace("SUBSTITUTE_TRACE_HERE", trace_gz_b64)
     return trace
+
+  @cherrypy.expose
+  def view_log(self, task_id, log):
+    if log not in ("stderr", "stdout"):
+      raise Exception("Unknown log type")
+    url = self.results_store.generate_output_link(task_id, log)
+    return cgi.escape(urllib.urlopen(url).read(), quote=True)
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
@@ -141,9 +149,9 @@ class DistTestServer(object):
         record = dict(task_id=t['task_id'],
                       description=t['description'])
         if t['stdout_abbrev']:
-          record['stdout_link'] = self.results_store.generate_output_link(t, "stdout")
+          record['stdout_link'] = self.results_store.generate_output_link(t['task_id'], "stdout")
         if t['stderr_abbrev']:
-          record['stderr_link'] = self.results_store.generate_output_link(t, "stderr")
+          record['stderr_link'] = self.results_store.generate_output_link(t['task_id'], "stderr")
         ret.append(record)
     return ret
 
@@ -301,9 +309,11 @@ class DistTestServer(object):
     for t in tasks:
       # stdout/stderr links
       if t['stdout_abbrev']:
-        t['stdout_link'] = self.results_store.generate_output_link(t, "stdout")
+        t['stdout_link'] = self.results_store.generate_output_link(t['task_id'], "stdout")
+        t['stdout_view_link'] = self.results_store.generate_view_link(t['task_id'], "stdout")
       if t['stderr_abbrev']:
-        t['stderr_link'] = self.results_store.generate_output_link(t, "stderr")
+        t['stderr_link'] = self.results_store.generate_output_link(t['task_id'], "stderr")
+        t['stderr_view_link'] = self.results_store.generate_view_link(t['task_id'], "stderr")
       # Calculate the elapsed time
       if t['start_timestamp'] is not None and t['complete_timestamp'] is not None:
         delta = t['complete_timestamp'] - t['start_timestamp']
@@ -330,27 +340,6 @@ class DistTestServer(object):
       t['status_class'] = ' '.join(status)
 
     template = Template("""
-      <script>
-$(document).ready(function() {
-  function showOnly(clazz) {
-    $('#tasks tbody tr:not(.' + clazz + ')').hide();
-    $('#tasks tbody tr.' + clazz).show();
-    return false;
-  }
-  function showAll() {
-    $('#tasks tbody tr').show();
-    return false;
-  }
-
-  $('table.sortable').tablesorter();
-  $('#show-all').click(function() { showAll(); });
-  $('#show-running').click(function() { showOnly('task-running'); });
-  $('#show-successful').click(function() { showOnly('task-successful'); });
-  $('#show-failed').click(function() { showOnly('task-failed'); });
-  $('#show-timedout').click(function() { showOnly('task-timedout'); });
-  $('#show-flaky').click(function() { showOnly('task-flaky'); });
-} );
-</script>
     <br style="clear: both;"/>
     <div>
       Show:
@@ -377,7 +366,7 @@ $(document).ready(function() {
     </thead>
     <tbody>
       {% for task in tasks %}
-        <tr class="{{ task.status_class |e}}">
+        <tr class="{{ task.status_class |e }}">
           <td>{{ task.runtime | int |e }}</td>
           <td>{{ task.description |e }}</td>
           <td>{{ task.hostname |e }}</td>
@@ -385,11 +374,13 @@ $(document).ready(function() {
           <td>{{ task.output_archive_hash |e }}</td>
           <td>{{ task.stdout_abbrev |e }}
               {% if task.stdout_link %}
+              <a class="view" href="#" viewlink="{{ task.stdout_view_link |e }}" viewheader="{{ task.description |e }}.{{ task.task_id |e }}.stdout">view</a>
               <a href="{{ task.stdout_link |e }}">download</a>
               {% endif %}
           </td>
           <td>{{ task.stderr_abbrev |e }}
               {% if task.stderr_link %}
+              <a class="view" href="#" viewlink="{{ task.stderr_view_link |e }}" viewheader="{{ task.description |e }}.{{ task.task_id |e }}.stderr">view</a>
               <a href="{{ task.stderr_link |e }}">download</a>
               {% endif %}
           </td>
@@ -420,10 +411,10 @@ $(document).ready(function() {
           margin-bottom: 1em;
         }
         .progress-bar .filler {
-           margin: 0px;
-           height: 100%;
-           border: 0;
-           float:left;
+          margin: 0px;
+          height: 100%;
+          border: 0;
+          float:left;
         }
         .filler.green { background-color: #0f0; }
         .task-running { background-color: #ffa; }
@@ -431,15 +422,75 @@ $(document).ready(function() {
         .task-failed { background-color: #faa; }
         .task-flaky { background-color: #fc9; }
         .filler.red { background-color: #f00; }
+
+        /* Required for scrollbar on modal window */
+        .modal-dialog { overflow-y: initial !important; }
+        .modal-body {
+          height: 100%;
+          overflow-y: auto;
+          font-family: monospace;
+          white-space:pre;
+        }
+
       </style>
     </head>
     <body>
-      <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
-      <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
-      <script src="//cdnjs.cloudflare.com/ajax/libs/jquery.tablesorter/2.18.2/js/jquery.tablesorter.min.js"></script>
+
+      <!-- Modal -->
+      <div id="logModal" class="modal fade" role="dialog">
+        <div class="modal-dialog modal-lg">
+
+          <!-- Modal content-->
+          <div class="modal-content">
+            <div class="modal-header">
+              <button type="button" class="close" data-dismiss="modal">&times;</button>
+              <h4 class="modal-title">Modal Header</h4>
+            </div>
+            <div class="modal-body">
+              <p>Some text in the modal.</p>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
       <div class="container-fluid">
       {{ body }}
       </div>
+      <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+      <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+      <script src="//cdnjs.cloudflare.com/ajax/libs/jquery.tablesorter/2.18.2/js/jquery.tablesorter.min.js"></script>
+      <script>
+        $(document).ready(function() {
+          function showOnly(clazz) {
+            $('#tasks tbody tr:not(.' + clazz + ')').hide();
+            $('#tasks tbody tr.' + clazz).show();
+            return false;
+          }
+          function showAll() {
+            $('#tasks tbody tr').show();
+            return false;
+          }
+
+          $('table.sortable').tablesorter();
+          $('#show-all').click(function() { showAll(); });
+          $('#show-running').click(function() { showOnly('task-running'); });
+          $('#show-successful').click(function() { showOnly('task-successful'); });
+          $('#show-failed').click(function() { showOnly('task-failed'); });
+          $('#show-timedout').click(function() { showOnly('task-timedout'); });
+          $('#show-flaky').click(function() { showOnly('task-flaky'); });
+
+          // Setup the lightbox for the "view" logs links
+          $( "a.view" ).click(function() {
+              $('#logModal .modal-title').text($(this).attr("viewheader"));
+              $('#logModal .modal-body').load($(this).attr("viewlink"), function() {
+                $('#logModal').modal();
+              });
+          });
+        });
+      </script>
     </body>
     </html>
     """)

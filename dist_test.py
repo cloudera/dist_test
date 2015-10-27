@@ -5,6 +5,7 @@ import errno
 import logging
 import MySQLdb
 import os
+import urllib
 import uuid
 try:
   import simplejson as json
@@ -228,11 +229,15 @@ class ResultsStore(object):
       ON DUPLICATE KEY
         UPDATE task_id = %(task_id)s, duration_secs = (duration_secs * 0.7) + (%(duration_secs)s * 0.3)""", parms)
 
-  def generate_output_link(self, task_row, output):
+  def generate_output_link(self, task_id, output):
     expiry = 60 * 60 * 24 # link should last 1 day
     k = boto.s3.key.Key(self.s3_bucket)
-    k.key = "%s.%s" % (task_row['task_id'], output)
+    k.key = "%s.%s" % (task_id, output)
     return k.generate_url(expiry)
+
+  def generate_view_link(self, task_id, output):
+    return "/view_log?task_id=%s&log=%s" % \
+        (urllib.quote(task_id), urllib.quote(output))
 
   def fetch_recent_job_rows(self):
     c = self._execute_query("""
