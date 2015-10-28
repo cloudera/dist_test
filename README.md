@@ -97,6 +97,36 @@ This just documents some other issues found-and-fixed that you might also run in
 
 * [HADOOP-12368](https://issues.apache.org/jira/browse/HADOOP-12368). Some tests picked up by Grind's test pattern did not actually have any tests inside, so would always fail when invoked. In this case, these were base tests that were not marked as abstract, and the fix was simply to mark the test class as abstract since grind skips abstract classes.
 
+Running a unit test locally
+---------------------------
+
+When debugging, it's nice to run a test locally. This can be done as follows:
+
+1. Run grind on the test you want to run with `--dry-run --leak-temp`. This skips actually submitting the test tasks, and leaves the intermediate submission metadata in a temp folder.
+
+        $ grind test --dry-run --leak-temp -i TestNativeCodeLoader
+        ...
+        INFO:__main__:Leaking temp directory /tmp/grind.d5X4RA
+
+1. Look in the temp directory `hashes.json` for the hash which identifies the isolate task.
+
+        $ cat /tmp/grind.d5X4RA/hashes.json
+        {
+          "org.apache.hadoop.util.TestNativeCodeLoader": "a21ff4f49b208afd9cda89705fef4668c94fe16a"
+        }%
+
+1. Run the hash using the isolate client, which will make another temp dir:
+
+        $ export ISOLATE_SERVER=http://a1228.halxg.cloudera.com:4242
+        $ ~/dev/swarming/client/run_isolated.py --verbose --leak-temp-dir --hash a21ff4f49b208afd9cda89705fef4668c94fe16a
+        ...
+        WARNING  22749    run_isolated(197): Deliberately leaking /tmp/run_tha_testGvhm8E for later examination
+
+1. If you go into this new temp dir, you'll be able to invoke it the same way grind does. You can modify this temp dir for faster iteration and troubleshooting.
+
+        $ cd /tmp/run_tha_testGvhm8E
+        $ ./run_test.sh hadoop-common-project/hadoop-common/pom.xml TestNativeCodeLoader
+
 Contributing to grind
 ---------------------
 
