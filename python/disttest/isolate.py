@@ -74,14 +74,15 @@ mvn -Dmaven.repo.local=$(pwd)/.m2/repository surefire:test --file $1 -Dtest=$2
 
     def __init__(self, project_root, output_dir,
                  include_modules=None, include_patterns=None, exclude_patterns=None,
-                 cache_dir=None):
+                 cache_dir=None, extra_deps_file=None):
         logger.info("Using output directory " + output_dir)
         self.output_dir = output_dir
         self.maven_project = mavenproject.MavenProject(project_root,
                                                        include_modules=include_modules,
                                                        include_patterns=include_patterns,
                                                        exclude_patterns=exclude_patterns)
-        self.packager = packager.Packager(self.maven_project, self.output_dir, cache_dir)
+        self.packager = packager.Packager(self.maven_project, self.output_dir,
+                                          cache_dir=cache_dir, extra_deps_file=extra_deps_file)
         self.isolated_files = []
 
     def package(self):

@@ -1,8 +1,10 @@
+import fnmatch
 import os
 import shutil
 import shlex, subprocess
 import tempfile
 import unittest
+import json
 
 from .. import mavenproject, packager, isolate, classfile
 
@@ -68,9 +70,9 @@ class TestMavenProject(unittest.TestCase):
         # list of (([includes], [excludes]), [results])
         expected = [
             ((["*"], None),
-                ["TestLinkedListReversal", "TestHelloWorld", "AppTest"]),
+                ["TestLinkedListReversal", "TestFailSometimes", "TestHelloWorld", "AppTest"]),
             ((["Test*"], None),
-                ["TestLinkedListReversal", "TestHelloWorld"]),
+                ["TestLinkedListReversal", "TestFailSometimes", "TestHelloWorld"]),
             ((["*Linked*"], None),
                 ["TestLinkedListReversal"]),
             ((["*Test"], None),
@@ -78,10 +80,10 @@ class TestMavenProject(unittest.TestCase):
             ((None, ["Test*"]),
                 ["AppTest"]),
             ((None, ["AppTest"]),
-                ["TestLinkedListReversal", "TestHelloWorld"]),
+                ["TestLinkedListReversal", "TestFailSometimes", "TestHelloWorld"]),
             ((None, ["*"]),
                 []),
-            ((["Test*"], ["*Reversal"]),
+            ((["Test*"], ["*Reversal", "*Sometimes"]),
                 ["TestHelloWorld"]),
             ((["Test*"], ["Test*"]),
                 []),
@@ -129,7 +131,7 @@ class TestPackager(unittest.TestCase):
         self.output_dir = tempfile.mkdtemp()
         self.cache_dir = tempfile.mkdtemp()
         self.project = mavenproject.MavenProject(TEST_PROJECT_PATH)
-        self.packager = packager.Packager(self.project, self.output_dir, self.cache_dir)
+        self.packager = packager.Packager(self.project, self.output_dir, cache_dir=self.cache_dir)
 
     def print_output_dir(self):
         for root, dirs, files in os.walk(self.output_dir):
@@ -143,7 +145,6 @@ class TestPackager(unittest.TestCase):
         #self.print_output_dir()
         shutil.rmtree(self.output_dir)
         shutil.rmtree(self.cache_dir)
-        pass
 
     def test_package_target_dirs(self):
         self.packager._package_target_dirs()
@@ -151,7 +152,7 @@ class TestPackager(unittest.TestCase):
     def test_package_maven_dependencies(self):
         self.packager._package_maven_dependencies()
         # Package from the cache dir
-        cpack = packager.Packager(self.project, tempfile.mkdtemp(), self.cache_dir)
+        cpack = packager.Packager(self.project, tempfile.mkdtemp(), cache_dir=self.cache_dir)
         cpack._package_maven_dependencies()
 
     def test_manifest(self):
@@ -180,9 +181,27 @@ class TestIsolate(unittest.TestCase):
         pass
 
     def test_isolate(self):
-        i = isolate.Isolate(TEST_PROJECT_PATH, self.output_dir)
+        # Write a file specifying the extra dependencies
+        patterns = ["*.properties"]
+        deps = {
+                "file_patterns": patterns
+        }
+        dep_file = os.path.join(self.output_dir, "deps")
+        with open(dep_file, "w") as o:
+            json.dump(deps, o)
+        i = isolate.Isolate(TEST_PROJECT_PATH, self.output_dir,
+                            extra_deps_file=dep_file)
         i.package()
         i.generate()
+        num_files = 0
+        for root, dirs, files in os.walk(self.output_dir):
+            for f in files:
+                for pattern in patterns:
+                    if fnmatch.fnmatch(f, pattern) and "target" in root:
+                        num_files += 1
+                        break
+        # Expect one property file per target directory (3 submodules, 1 root)
+        self.assertEqual(4, num_files)
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,9 @@
 import datetime
 import errno
+import fnmatch
+import hashlib
 import os
+import json
 import logging
 import pickle
 import shlex, subprocess
@@ -12,6 +15,32 @@ import util
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+class ExtraDependencies:
+    """Per-project extra dependencies that are not included in the normal JARs.
+    This includes things like folders created by antrun or native libraries
+    not bundled in JARs."""
+
+    def __init__(self, empty_dirs, file_patterns):
+        assert type(empty_dirs) is list
+        assert type(file_patterns) is list
+        self.empty_dirs = empty_dirs
+        self.file_patterns = file_patterns
+
+    @staticmethod
+    def read(input_file):
+        logger.info("Reading extra dependencies from %s", input_file)
+        if not os.path.isfile(input_file):
+            return None
+        with open(input_file, "r") as o:
+            d = json.load(o)
+            empty_dirs = []
+            if "empty_dirs" in d.keys():
+                empty_dirs = d["empty_dirs"]
+            file_patterns = []
+            if "file_patterns" in d.keys():
+                file_patterns = d["file_patterns"]
+            return ExtraDependencies(empty_dirs, file_patterns)
+
 class Manifest:
     """Identifies a Maven project based on the git branch.
 
@@ -21,11 +50,12 @@ class Manifest:
 
     _FILENAME = ".grind_manifest"
     """Identifying information about a git project."""
-    def __init__(self, project_root, git_branch, git_hash, timestamp):
+    def __init__(self, project_root, git_branch, git_hash, timestamp, extra_deps_checksum):
         self.project_root = project_root
         self.git_hash = git_hash
         self.git_branch = git_branch
         self.timestamp = timestamp
+        self.extra_deps_checksum = extra_deps_checksum
 
     def write(self, output_file):
         with open(output_file, "wt") as o:
@@ -33,11 +63,14 @@ class Manifest:
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
-            if not "project_root" in other.__dict__.keys() or \
-                not "git_branch" in other.__dict__.keys():
-                    raise Exception("Cached manifest is missing required attributes. Try running `grind cache --clear`?")
+            for attr in ["project_root", "git_branch", "extra_deps_checksum"]:
+                for obj in [self, other]:
+                    if not hasattr(obj, attr):
+                        logger.info("Cached manifest is missing required attributes, stale.")
+                        return False
             return self.project_root == other.project_root and \
-                    self.git_branch == other.git_branch
+                    self.git_branch == other.git_branch and \
+                    self.extra_deps_checksum == other.extra_deps_checksum
         else:
             return False
 
@@ -56,7 +89,7 @@ class Manifest:
             return pickle.load(o)
 
     @staticmethod
-    def build_from_project(project_root):
+    def build_from_project(project_root, extra_deps_file):
         retcode = subprocess.call("git show-ref --quiet", shell=True, cwd=project_root)
         if retcode != 0:
             raise Exception("Directory %s is not a git repository" % project_root)
@@ -68,7 +101,11 @@ class Manifest:
         # Trim newlines from the end
         if git_branch.endswith("\n"):
             git_branch = git_branch[:-1]
-        return Manifest(os.path.normpath(project_root), git_branch, git_hash, datetime.datetime.now())
+        # Hash the deps file to look for changes
+        deps_checksum = None
+        if os.path.isfile(extra_deps_file):
+            deps_checksum = hashlib.md5(extra_deps_file).digest()
+        return Manifest(os.path.normpath(project_root), git_branch, git_hash, datetime.datetime.now(), deps_checksum)
 
 class CacheManager:
     """Interface for interacting with cached dependency sets (list, clear, etc)."""
@@ -155,7 +192,7 @@ class Packager:
     # Call it this for familiarity
     _MAVEN_REL_ROOT = ".m2/repository"
 
-    def __init__(self, maven_project, output_root, cache_dir, ignore=None):
+    def __init__(self, maven_project, output_root, cache_dir=None, extra_deps_file=None, ignore=None):
         self.__maven_project = maven_project
         self.__project_root = maven_project.project_root
         self.__output_root = output_root
@@ -164,15 +201,21 @@ class Packager:
             self.__cache_dir = tempfile.mkdtemp(prefix="grindcache.")
             logger.info("No cache dir specified, using temp directory %s instead", self.__cache_dir)
         self.__cached_project_root = self.__cache_dir + self.__project_root
-        self.__manifest = Manifest.build_from_project(self.__project_root)
+        self.__extra_deps_file = extra_deps_file
+        self.__extra_deps = ExtraDependencies([], [])
+        if extra_deps_file is not None:
+            self.__extra_deps = ExtraDependencies.read(extra_deps_file)
+
         if ignore is None:
-            #self.__ignore = ["*.jar", "*.war", "surefire-reports"]
             self.__ignore = []
         else:
             self.__ignore = ignore
         self.__test_jars = []
         self.__test_dirs = []
         self.__jars = []
+
+        # Pass ourself in to build Manifest
+        self.__manifest = Manifest.build_from_project(self.__project_root, self.__extra_deps_file)
 
     @staticmethod
     def __mkdirs_recursive(path):
@@ -220,16 +263,22 @@ class Packager:
                 self.__copy(module.root, artifact)
                 self.__jars.append(artifact)
 
-        # Create some target subdirectories needed by some tests, this happens via antrun in Hadoop
-        paths = ("target/test/data", "target/test-dir", "target/log")
         for module in self.__maven_project.modules:
-            for p in paths:
-                input_abspath = os.path.join(module.root, p)
-                module_relpath = os.path.relpath(module.root, self.__project_root)
-                dir_relpath = os.path.join(module_relpath, p)
+            # Create empty directories in target directories
+            target = os.path.join(module.root, "target")
+            for empty_dir in self.__extra_deps.empty_dirs:
+                input_abspath = os.path.join(target, empty_dir)
+                module_relpath = os.path.relpath(target, self.__project_root)
+                dir_relpath = os.path.join(module_relpath, empty_dir)
                 # Only create if it already exists in source, save us some trouble
                 if os.path.exists(input_abspath):
                     self.__test_dirs += [dir_relpath]
+            for root, dirs, files in os.walk(target):
+                for f in files:
+                    for pattern in self.__extra_deps.file_patterns:
+                        if fnmatch.fnmatch(f, pattern):
+                            artifact = os.path.join(root, f)
+                            self.__copy(module.root, artifact)
 
         logger.info("Packaged %s modules to output directory %s",\
                     len(self.__maven_project.modules), self.__output_root)
