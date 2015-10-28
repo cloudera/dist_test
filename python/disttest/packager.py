@@ -103,7 +103,7 @@ class Manifest:
             git_branch = git_branch[:-1]
         # Hash the deps file to look for changes
         deps_checksum = None
-        if os.path.isfile(extra_deps_file):
+        if extra_deps_file is not None and os.path.isfile(extra_deps_file):
             deps_checksum = hashlib.md5(extra_deps_file).digest()
         return Manifest(os.path.normpath(project_root), git_branch, git_hash, datetime.datetime.now(), deps_checksum)
 
