@@ -34,8 +34,9 @@ Example usage
         [grind]
         isolate_server = http://a1228.halxg.cloudera.com:4242
         dist_test_client_path = ~/dev/dist_test/client.py
-        grind_cache = ~/.grind/cache
         isolate_path = ~/dev/go/bin/isolate
+        grind_temp_dir = /tmp
+        grind_cache_dir = ~/.grind/cache
 
 1. cd to your project and build it, e.g.
 
@@ -63,6 +64,29 @@ Example usage
         $ grind test -m hadoop-hdfs -i TestBalancer\* -i TestDFSClient -i Test\*CLI
 
 See `grind test --help` for more advanced usage instructions.
+
+Configuration
+-------------
+
+`grind config` generates a sample config file, with the following keys:
+
+* `isolate_server`: The URL of the isolate server where artifacts will be uploaded.
+* `dist_test_client_path`: The path to `client.py` within your checked out `dist_test` repository.
+* `isolate_path`: Path to the isolate binary, this is used to generate the isolate task descriptions
+* `grind_temp_dir`: Where grind will keep per-invocation data. This should be on the same hard disk as the `grind_cache_dir` to enable hardlinking.
+* `grind_cache_dir`: Where grind will cached per-project dependency sets. This greatly speeds up repeated grind invocations. This should be on the same hard disk as the `grind_cache_dir` to enable hardlinking.
+
+Grind also supports specifying additional per-project dependencies that need to be tracked, relative to module `target` folders.
+This is done in a `.grind_deps` JSON file stored in the project root.
+As an example, Hadoop creates some empty directories for tests to use which need to be present in the test environment.
+Hadoop also builds native libraries which are not included in the JAR, but are also required for test execution.
+
+        {
+            "empty_dirs": ["test/data", "test-dir", "log"],
+            "file_patterns": ["*.so"]
+        }
+
+Richer support for specifying these additional dependencies will be added on demand.
 
 Common issues when onboarding
 -----------------------------
