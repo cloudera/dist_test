@@ -120,7 +120,7 @@ run mvn -Dmaven.repo.local=$(pwd)/.m2/repository surefire:test --file $1 -Dtest=
         }
         isolate_path = os.path.join(self.output_dir, self.__ISOLATE_NAME)
         with open(isolate_path, "wt") as out:
-            pprint.pprint(isolate, stream=out)
+            out.write(str(isolate))
 
         # Write the per-test json files for isolate's batcharchive command
         num_written = 0
