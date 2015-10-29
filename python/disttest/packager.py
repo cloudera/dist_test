@@ -115,7 +115,12 @@ class CacheManager:
 
     @staticmethod
     def __read_with_size(project_root):
-        manifest = Manifest.read(os.path.join(project_root, Manifest._FILENAME))
+        cache_path = os.path.join(project_root, Manifest._FILENAME)
+        if not os.path.exists(cache_path):
+            return None
+        manifest = Manifest.read(cache_path)
+        if manifest is None:
+            return None
         manifest.size = util.du(project_root)
         return manifest
 
