@@ -8,7 +8,10 @@ import sys
 import time
 import urllib
 import urllib2
-import simplejson
+try:
+  import simplejson as json
+except:
+  import json
 import time
 
 import config
@@ -89,7 +92,7 @@ def do_watch_results(job_id):
   previous_result = None
   while True:
     result_str = urllib2.urlopen(url).read()
-    result = simplejson.loads(result_str)
+    result = json.loads(result_str)
 
     # Set the UNIX return code if we're finished, according to the test result
     retcode = None
@@ -123,17 +126,17 @@ def load_last_job_id():
   except:
     return None
 
-def submit_job_json(job_prefix, json):
+def submit_job_json(job_prefix, job_json):
   # Verify that it is proper JSON
-  simplejson.loads(json)
+  json.loads(job_json)
   # Prepend the job_prefix if present
   if job_prefix is not None and len(job_prefix) > 0:
     job_prefix += "."
   job_id = job_prefix + generate_job_id()
-  form_data = urllib.urlencode({'job_id': job_id, 'job_json': json})
+  form_data = urllib.urlencode({'job_id': job_id, 'job_json': job_json})
   result_str = urllib2.urlopen(TEST_MASTER + "/submit_job",
                                data=form_data).read()
-  result = simplejson.loads(result_str)
+  result = json.loads(result_str)
   if result.get('status') != 'SUCCESS':
     sys.err.println("Unable to submit job: %s" % repr(result))
     sys.exit(1)
@@ -179,7 +182,7 @@ def watch(argv):
 def fetch_failed_tasks(job_id):
   url = TEST_MASTER + "/failed_tasks?" + urllib.urlencode([("job_id", job_id)])
   results_str = urllib2.urlopen(url).read()
-  return simplejson.loads(results_str)
+  return json.loads(results_str)
 
 def safe_name(s):
   return "".join([c.isalnum() and c or "_" for c in s])

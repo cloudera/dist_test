@@ -8,7 +8,10 @@ import logging
 import os
 from jinja2 import Template
 import urllib
-import simplejson
+try:
+  import simplejson as json
+except:
+  import json
 import StringIO
 import gzip
 from collections import defaultdict
@@ -62,7 +65,7 @@ class DistTestServer(object):
                         dur=self._delta_us(task['complete_timestamp'] - task['start_timestamp']),
                         ts=self._delta_us(task['start_timestamp'] - min_st)))
     trace_gz = StringIO.StringIO()
-    simplejson.dump({"traceEvents": ret},
+    json.dump({"traceEvents": ret},
                     gzip.GzipFile(fileobj=trace_gz, mode="w"))
     trace_gz_b64 = base64.encodestring(trace_gz.getvalue())
     with open(TRACE_HTML, "r") as f:
@@ -86,7 +89,7 @@ class DistTestServer(object):
   @cherrypy.expose
   @cherrypy.tools.json_out()
   def submit_job(self, job_id, job_json):
-    job_desc = simplejson.loads(job_json)
+    job_desc = json.loads(job_json)
 
     tasks = []
     for i, task_desc in enumerate(job_desc['tasks']):
