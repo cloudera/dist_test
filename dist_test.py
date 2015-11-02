@@ -61,9 +61,11 @@ class TaskQueue(object):
     config.ensure_beanstalk_configured()
     self.bs = beanstalkc.Connection(config.BEANSTALK_HOST)
 
-  def submit_task(self, task):
+  def submit_task(self, task, priority=2147483648):
+    """Submit a beanstalk task, with optional non-negative integer priority.
+    Lower priority values are reserved first."""
     logging.info("Submitting task %s" % task.job_id)
-    self.bs.put(task.to_json())
+    self.bs.put(task.to_json(), priority=priority)
 
   def reserve_task(self):
     bs_elem = self.bs.reserve()

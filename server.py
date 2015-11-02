@@ -112,7 +112,9 @@ class DistTestServer(object):
     if task.attempt < task.max_retries:
       task.attempt += 1
       self.results_store.register_task(task)
-      self.task_queue.submit_task(task)
+      # Run retry tasks with a boosted priority. This prevents them from straggling
+      # if we've already started running another job.
+      self.task_queue.submit_task(task, priority=1000)
     return {"status": "SUCCESS"}
 
   def _sort_tasks_by_duration(self, tasks):
