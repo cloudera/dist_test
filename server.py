@@ -204,6 +204,7 @@ class DistTestServer(object):
       # If we succeeded after some failures, increment flaky count
       if succeeded and any(failed_tasks):
         result['flaky_groups'] += 1
+    result['finished_groups'] = result['failed_groups'] + result['succeeded_groups']
 
     # Determine job state: if it's finished, how long its been running
     finish_time = None

@@ -32,7 +32,7 @@ def generate_job_id():
   return "%s.%d.%d" % (getpass.getuser(), int(time.time()), os.getpid())
 
 def print_status(start_time, previous_result, result,
-                 interactive=False, first=False):
+                 interactive=False, first=False, retcode=None):
   # In non-interactive mode, do not print unless the result changed
   if not interactive and previous_result is not None:
     if previous_result['finished_tasks'] == result['finished_tasks']:
@@ -40,44 +40,49 @@ def print_status(start_time, previous_result, result,
 
   # In interactive mode, delete the previous line of output after the first
   if interactive and not first:
-    print "\x1b[F\x1b[2K",
+    sys.stdout.write("\x1b[F\x1b[2K")
 
   run_time = time.time() - start_time
-  print "%.1fs\t" % run_time,
+  if interactive and retcode is not None:
+    if retcode == 0:
+      sys.stdout.write(GREEN)
+    else:
+      sys.stdout.write(RED)
 
-  print "%d/%d tasks complete" % \
-      (result['finished_tasks'], result['total_tasks']),
+  sys.stdout.write(" %.1fs\t" % run_time)
+
+  sys.stdout.write(" %d/%d tests complete" % \
+      (result['finished_groups'], result['total_groups']))
+
+  if interactive and retcode is not None:
+    sys.stdout.write(RESET)
 
   if result['failed_groups']:
-    p = "(%d failed)" % result['failed_groups']
+    p = " (%d failed)" % result['failed_groups']
     if interactive:
-      print RED, p, RESET,
+      sys.stdout.write(RED + p + RESET)
     else:
-      print p,
+      sys.stdout.write(p)
 
   if result['retried_tasks']:
-    p = "(%d retried)" % result['retried_tasks']
+    p = " (%d retries)" % result['retried_tasks']
     if interactive:
-      print YELLOW, p, RESET,
+      sys.stdout.write(YELLOW + p + RESET)
     else:
-      print p,
+      sys.stdout.write(p)
 
-  print
+  sys.stdout.write("\n")
 
-def print_exit(retcode, interactive=False):
-  success_msg = "Success! :D"
-  failure_msg = "Failure :'("
 
-  if retcode == 0:
-    if interactive:
-      print GREEN + success_msg + RESET
+def get_return_code(result):
+  retcode = None
+  if result['finished_tasks'] == result['total_tasks']:
+    if result['failed_groups'] > 0:
+      retcode = 88
     else:
-      print success_msg
-  else:
-    if interactive:
-      print RED + failure_msg + RESET
-    else:
-      print failure_msg
+      retcode = 0
+  return retcode
+
 
 def do_watch_results(job_id):
   watch_url = TEST_MASTER + "/job?" + urllib.urlencode([("job_id", job_id)])
@@ -94,22 +99,14 @@ def do_watch_results(job_id):
     result_str = urllib2.urlopen(url).read()
     result = json.loads(result_str)
 
-    # Set the UNIX return code if we're finished, according to the test result
-    retcode = None
-    if result['finished_tasks'] == result['total_tasks']:
-      if result['failed_groups'] > 0:
-        retcode = 88
-      else:
-        retcode = 0
-
-    print_status(start_time, previous_result, result, interactive=interactive, first=first)
+    retcode = get_return_code(result)
+    print_status(start_time, previous_result, result, interactive=interactive, first=first, retcode=retcode)
     first = False
 
     previous_result = result
 
-    # Return if we're done
+    # Set and return a UNIX return code if we're finished, based on the test result
     if retcode is not None:
-      print_exit(retcode, interactive=interactive)
       return retcode
 
     # Sleep until next interval
