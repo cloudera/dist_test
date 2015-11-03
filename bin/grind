@@ -37,6 +37,7 @@ class Config:
         "isolate_server": "http://a1228.halxg.cloudera.com:4242",
         "isolate_path": os.path.join("~", "dev", "go", "bin", "isolate"),
         "dist_test_client_path": os.path.join("~", "dev", "dist_test", "client.py"),
+        "dist_test_master": "http://a1228.halxg.cloudera.com:8081/"
     }
     __optional = {
         "grind_cache_dir": os.path.join("~", ".grind", "cache"),
@@ -83,7 +84,7 @@ class Config:
             self.__dict__[k] = os.path.expanduser(self.config.get(Config.__section, k))
             if not os.path.exists(self.__dict__[k]):
                 os.makedirs(self.__dict__[k])
-        for k in ["isolate_server"]:
+        for k in ["isolate_server", "dist_test_master"]:
             self.__dict__[k] = self.config.get(Config.__section, k)
 
         # Remove the DEFAULT section now that we're done parsing
@@ -297,6 +298,7 @@ class TestRunner:
         # Set up required environment variables
         isolate_env = os.environ
         isolate_env["ISOLATE_SERVER"] = self.config.isolate_server
+        isolate_env["DIST_TEST_MASTER"] = self.config.dist_test_master
 
         if len(i.isolated_files) == 0:
             logger.error("No tests found for project %s!", self.project_dir)
