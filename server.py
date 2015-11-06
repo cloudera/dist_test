@@ -74,10 +74,19 @@ class DistTestServer(object):
     return trace
 
   @cherrypy.expose
-  def view_log(self, task_id, log):
-    if log not in ("stderr", "stdout"):
-      raise Exception("Unknown log type")
-    url = self.results_store.generate_output_link(task_id, log)
+  def view_log(self, job_id, task_id, attempt, log):
+    task = self.results_store.fetch_task(job_id, task_id, attempt)
+    if task is None:
+      return "Could not find requested task"
+
+    if log == "stderr":
+      key = task['stderr_key']
+    elif log == "stdout":
+      key = task['stdout_key']
+    else:
+      return "Unknown log type"
+
+    url = self.results_store.generate_output_link(key)
     return cgi.escape(urllib.urlopen(url).read(), quote=True)
 
   @cherrypy.expose
@@ -111,7 +120,7 @@ class DistTestServer(object):
     task = dist_test.Task.from_json(task_json)
     if task.attempt < task.max_retries:
       task.attempt += 1
-      self.results_store.register_task(task)
+      self.results_store.register_tasks([task])
       # Run retry tasks with a boosted priority. This prevents them from straggling
       # if we've already started running another job.
       self.task_queue.submit_task(task, priority=1000)
@@ -153,10 +162,12 @@ class DistTestServer(object):
       if t['status'] is not None and t['status'] != 0:
         record = dict(task_id=t['task_id'],
                       description=t['description'])
-        if t['stdout_abbrev']:
-          record['stdout_link'] = self.results_store.generate_output_link(t['task_id'], "stdout")
-        if t['stderr_abbrev']:
-          record['stderr_link'] = self.results_store.generate_output_link(t['task_id'], "stderr")
+        if t['stdout_key']:
+          record['stdout_link'] = self.results_store.generate_output_link(t['stdout_key'])
+        if t['stderr_key']:
+          record['stderr_link'] = self.results_store.generate_output_link(t['stderr_key'])
+        if t['artifact_archive_key']:
+          record['artifact_archive'] = self.results_store.generate_output_link(t['artifact_archive_key'])
         ret.append(record)
     return ret
 
@@ -303,6 +314,11 @@ class DistTestServer(object):
     """)
     return template.render(job=job, job_summary=job_summary)
 
+  def _generate_view_link(self, task, output):
+    return "/view_log?job_id=%s&task_id=%s&attempt=%s&log=%s" % \
+        (urllib.quote(task["job_id"]), urllib.quote(task["task_id"]), urllib.quote(task["attempt"]), urllib.quote(output))
+
+
   def _render_tasks(self, tasks, job_summary, task_groups):
     # Calculate status of each task group
     task_to_group_status = defaultdict(dict)
@@ -314,12 +330,15 @@ class DistTestServer(object):
 
     for t in tasks:
       # stdout/stderr links
-      if t['stdout_abbrev']:
-        t['stdout_link'] = self.results_store.generate_output_link(t['task_id'], "stdout")
-        t['stdout_view_link'] = self.results_store.generate_view_link(t['task_id'], "stdout")
-      if t['stderr_abbrev']:
-        t['stderr_link'] = self.results_store.generate_output_link(t['task_id'], "stderr")
-        t['stderr_view_link'] = self.results_store.generate_view_link(t['task_id'], "stderr")
+      if t['stdout_key']:
+        t['stdout_link'] = self.results_store.generate_output_link(t['stdout_key'])
+        t['stdout_view_link'] = self._generate_view_link(t, "stdout")
+      if t['stderr_key']:
+        t['stderr_link'] = self.results_store.generate_output_link(t['stderr_key'])
+        t['stderr_view_link'] = self._generate_view_link(t, "stderr")
+      # artifact link
+      if t['artifact_archive_key']:
+        t['artifact_archive_link'] = self.results_store.generate_output_link(t['artifact_archive_key'])
       # Calculate the elapsed time
       if t['start_timestamp'] is not None and t['complete_timestamp'] is not None:
         delta = t['complete_timestamp'] - t['start_timestamp']
@@ -366,6 +385,7 @@ class DistTestServer(object):
         <th>results</th>
         <th>stdout</th>
         <th>stderr</th>
+        <th>artifacts</th>
         <th>task</th>
         <th>attempt</th>
       </tr>
@@ -380,14 +400,21 @@ class DistTestServer(object):
           <td>{{ task.output_archive_hash |e }}</td>
           <td>{{ task.stdout_abbrev |e }}
               {% if task.stdout_link %}
+              <br/>
               <a class="view" href="#" viewlink="{{ task.stdout_view_link |e }}" viewheader="{{ task.description |e }}.{{ task.task_id |e }}.stdout">view</a>
               <a href="{{ task.stdout_link |e }}">download</a>
               {% endif %}
           </td>
           <td>{{ task.stderr_abbrev |e }}
               {% if task.stderr_link %}
+              <br/>
               <a class="view" href="#" viewlink="{{ task.stderr_view_link |e }}" viewheader="{{ task.description |e }}.{{ task.task_id |e }}.stderr">view</a>
               <a href="{{ task.stderr_link |e }}">download</a>
+              {% endif %}
+          </td>
+          <td>
+              {% if task.artifact_archive_link %}
+              <a href="{{ task.artifact_archive_link |e }}">download</a>
               {% endif %}
           </td>
           <td>{{ task.task_id |e }}</td>

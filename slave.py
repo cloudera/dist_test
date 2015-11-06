@@ -4,18 +4,22 @@ import beanstalkc
 import boto
 import errno
 import fcntl
+import glob2
 import logging
 import os
 import urllib
 import urllib2
 import re
 import select
+import shutil
+import sys
 try:
   import simplejson as json
 except:
   import json
 import subprocess
 import time
+import zipfile
 
 from config import Config
 import dist_test
@@ -61,11 +65,58 @@ class Slave(object):
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
+  def get_test_dir(self):
+    # Find the test_dir for this invocation of run_isolated.py
+    # FIXME: this is done by looking for the most recent ctime for /tmp/run_tha_test*
+    # which is not reliable if multiple slaves share the same host
+    base_dir = "/tmp"
+    paths = [p for p in os.listdir(base_dir) if p.startswith("run_tha_test")]
+    paths = [os.path.join(base_dir, p) for p in paths]
+    ctime_path  = sorted([(os.stat(p).st_ctime, p) for p in paths])
+    if len(ctime_path) == 0:
+      LOG.warn("No run_tha_test directory found!")
+      return None
+    _, test_dir = ctime_path[-1]
+    return test_dir
+
+
+  def make_archive(self, task, test_dir):
+    # Return early if there are no globs specified
+    if task.task.artifact_archive_globs is None or len(task.task.artifact_archive_globs) == 0:
+      return None
+    all_matched = set()
+    for g in task.task.artifact_archive_globs:
+      try:
+          matched = glob2.iglob(test_dir + "/" + g)
+          for m in matched:
+            canonical = os.path.realpath(m)
+            if not canonical.startswith(test_dir):
+              LOG.warn("Glob %s matched file outside of test_dir, skipping: %s" % (g, canonical))
+              continue
+            all_matched.add(os.path.realpath(m))
+      except Exception as e:
+        LOG.warn("Error while globbing %s: %s" % (g, e))
+    if len(all_matched) == 0:
+      return None
+
+    # Write out the archive
+    archive_name = os.path.join("/tmp", task.task.get_id() + "-artifacts.zip")
+    with zipfile.ZipFile(archive_name, "w") as myzip:
+      for m in all_matched:
+        arcname = os.path.relpath(m, test_dir)
+        while arcname.startswith("/"):
+          arcname = arcname[1:]
+        myzip.write(m, arcname)
+
+    return archive_name
+
+
   def run_task(self, task, bs_job):
     cmd = [os.path.join(self.config.ISOLATE_HOME, "run_isolated.py"),
            "--isolate-server=%s" % self.config.ISOLATE_SERVER,
            "--cache=%s" % self.cache_dir,
            "--verbose",
+           "--leak-temp",
            "--hash", task.task.isolate_hash]
     if not self.results_store.mark_task_running(task.task):
       LOG.info("Task %s canceled", task.task.description)
@@ -91,7 +142,8 @@ class Slave(object):
         x = p.stdout.read(1024 * 1024)
         stdout += x
       if p.stderr in rlist:
-        stderr += p.stderr.read(1024 * 1024)
+        x = p.stderr.read(1024 * 1024)
+        stderr += x
       if xlist or p.poll() is not None:
         break
       now = time.time()
@@ -119,10 +171,15 @@ class Slave(object):
       isolated_out = json.loads(m.group(1))
       output_archive_hash = isolated_out['hash']
 
+    test_dir = self.get_test_dir()
+    artifact_archive = None
+
     # Don't upload results from successful builds
     if rc == 0:
       stdout = None
       stderr = None
+    else:
+      artifact_archive = self.make_archive(task, test_dir)
 
     end_time = time.time()
     duration_secs = end_time - start_time
@@ -132,7 +189,14 @@ class Slave(object):
                                           result_code=rc,
                                           stdout=stdout,
                                           stderr=stderr,
+                                          artifact_archive=artifact_archive,
                                           duration_secs=duration_secs)
+
+    # Do cleanup of temp files
+    LOG.info("Removing test directory %s" % test_dir)
+    shutil.rmtree(test_dir)
+    if artifact_archive is not None:
+      os.remove(artifact_archive)
 
     # Retry if non-zero exit code and have retries remaining
     if rc != 0 and task.task.attempt < task.task.max_retries:

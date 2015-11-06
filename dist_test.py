@@ -39,6 +39,7 @@ class Task(object):
     # The number of times this task will be retried.
     # The default value of 0 means the task will not be retried.
     self.max_retries = d.get('max_retries', 0)
+    self.artifact_archive_globs = d.get('artifact_archive_globs', [])
 
   def to_json(self):
     job_struct = dict(
@@ -48,8 +49,13 @@ class Task(object):
       description=self.description,
       timeout=self.timeout,
       attempt=self.attempt,
-      max_retries=self.max_retries)
+      max_retries=self.max_retries,
+      artifact_archive_globs=self.artifact_archive_globs,
+    )
     return json.dumps(job_struct)
+
+  def get_id(self):
+    return "%s.%s.%s" % (self.job_id, self.task_id, self.attempt)
 
 class ReservedTask(object):
   def __init__(self, bs_elem):
@@ -143,6 +149,9 @@ class ResultsStore(object):
         output_archive_hash char(40),
         stdout_abbrev varchar(100),
         stderr_abbrev varchar(100),
+        stdout_key varchar(256),
+        stderr_key varchar(256),
+        artifact_archive_key varchar(256),
         status int,
         PRIMARY KEY(job_id, task_id, attempt),
         INDEX(submit_timestamp)
@@ -154,11 +163,6 @@ class ResultsStore(object):
         duration_secs int not null
       );""")
 
-
-  def register_task(self, task):
-    self._execute_query("""
-      INSERT INTO dist_test_tasks(job_id, task_id, attempt, max_retries, description) VALUES (%s, %s, %s, %s, %s)
-    """, [task.job_id, task.task_id, task.attempt, task.max_retries, task.description])
 
   def register_tasks(self, tasks):
     tuples = []
@@ -193,33 +197,50 @@ class ResultsStore(object):
         complete_timestamp = now()
       WHERE job_id = %(job_id)s AND status IS NULL""", parms)
     
-  def mark_task_finished(self, task, result_code, stdout, stderr, output_archive_hash, duration_secs):
+  def mark_task_finished(self, task, result_code, stdout, stderr, artifact_archive, output_archive_hash, duration_secs):
+    stdout_key = None
+    stdout_abbrev = ""
+    stderr_key = None
+    stderr_abbrev = ""
+    artifact_archive_key = None
+
     if stdout:
-      fn = "%s.stdout" % task.task_id
-      self._upload_to_s3(fn, stdout, fn)
-      logging.info("Uploaded stdout for %s to S3" % task.task_id)
-    else:
-      stdout = ""
+      stdout_key = "%s.stdout" % task.get_id()
+      stdout_abbrev = stdout[0:100]
+      self._upload_string_to_s3(stdout_key, stdout)
+      logging.info("Uploaded stdout for %s to S3" % task.get_id())
+
     if stderr:
-      fn = "%s.stderr" % task.task_id
-      self._upload_to_s3(fn, stderr, fn)
-      logging.info("Uploaded stderr for %s to S3" % task.task_id)
-    else:
-      stderr = ""
+      stderr_key = "%s.stderr" % task.get_id()
+      stderr_abbrev = stderr[0:100]
+      self._upload_string_to_s3(stderr_key, stderr)
+      logging.info("Uploaded stderr for %s to S3" % task.get_id())
+
+    if artifact_archive:
+      artifact_archive_key = os.path.basename(artifact_archive)
+      self._upload_file_to_s3(artifact_archive_key, artifact_archive)
+      logging.info("Uploaded artifact archive for %s to S3" % task.get_id())
+
     parms = dict(result_code=result_code,
                  job_id=task.job_id,
                  task_id=task.task_id,
                  attempt=task.attempt,
                  output_archive_hash=output_archive_hash,
-                 stdout_abbrev=stdout[0:100],
-                 stderr_abbrev=stderr[0:100],
+                 stdout_key=stdout_key,
+                 stdout_abbrev=stdout_abbrev,
+                 stderr_key=stderr_key,
+                 stderr_abbrev=stderr_abbrev,
+                 artifact_archive_key=artifact_archive_key,
                  description=task.description,
                  duration_secs=duration_secs)
     self._execute_query("""
       UPDATE dist_test_tasks SET
         status = %(result_code)s,
+        stdout_key = %(stdout_key)s,
         stdout_abbrev = %(stdout_abbrev)s,
+        stderr_key = %(stderr_key)s,
         stderr_abbrev = %(stderr_abbrev)s,
+        artifact_archive_key = %(artifact_archive_key)s,
         output_archive_hash = %(output_archive_hash)s,
         complete_timestamp = now()
       WHERE job_id = %(job_id)s AND task_id = %(task_id)s AND attempt = %(attempt)s""", parms)
@@ -231,15 +252,11 @@ class ResultsStore(object):
       ON DUPLICATE KEY
         UPDATE task_id = %(task_id)s, duration_secs = (duration_secs * 0.7) + (%(duration_secs)s * 0.3)""", parms)
 
-  def generate_output_link(self, task_id, output):
+  def generate_output_link(self, key):
     expiry = 60 * 60 * 24 # link should last 1 day
     k = boto.s3.key.Key(self.s3_bucket)
-    k.key = "%s.%s" % (task_id, output)
+    k.key = key
     return k.generate_url(expiry)
-
-  def generate_view_link(self, task_id, output):
-    return "/view_log?task_id=%s&log=%s" % \
-        (urllib.quote(task_id), urllib.quote(output))
 
   def fetch_recent_job_rows(self):
     c = self._execute_query("""
@@ -253,6 +270,12 @@ class ResultsStore(object):
         order by submit_timestamp desc;
     """)
     return c.fetchall()
+
+  def fetch_task(self, job_id, task_id, attempt):
+    c = self._execute_query(
+      "SELECT * FROM dist_test_tasks WHERE job_id = %(job_id)s AND task_id = %(task_id)s AND attempt = %(attempt)s",
+      dict(job_id=job_id, task_id=task_id, attempt=attempt))
+    return c.fetchone()
 
   def fetch_task_rows_for_job(self, job_id):
     c = self._execute_query(
@@ -277,15 +300,20 @@ class ResultsStore(object):
     c = self._execute_query(query)
     return c.fetchall()
 
-  def _upload_to_s3(self, key, data, filename):
+  def _upload_string_to_s3(self, key, data):
     k = boto.s3.key.Key(self.s3_bucket)
     k.key = key
     # The Content-Disposition header sets the filename that the browser
     # will use to download this.
     # We have to cast to str() here, because boto will try to escape the header
     # incorrectly if you pass a unicode string.
-    k.set_metadata('Content-Disposition', str('inline; filename=%s' % filename))
+    k.set_metadata('Content-Disposition', str('inline; filename=%s' % key))
     k.set_contents_from_string(data, reduced_redundancy=True)
+
+  def _upload_file_to_s3(self, key, input_file):
+    k = boto.s3.key.Key(self.s3_bucket)
+    k.key = key
+    k.set_contents_from_filename(input_file)
 
 def configure_logger(logger, filename):
   handlers = []
