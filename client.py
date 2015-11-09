@@ -2,6 +2,7 @@
 
 import getpass
 import logging
+import multiprocessing
 import optparse
 import os
 import sys
@@ -13,6 +14,7 @@ try:
 except:
   import json
 import time
+import zipfile
 
 import config
 
@@ -176,8 +178,11 @@ def watch(argv):
   job_id = get_job_id_from_args("watch", argv)
   sys.exit(do_watch_results(job_id))
 
-def fetch_failed_tasks(job_id):
-  url = TEST_MASTER + "/failed_tasks?" + urllib.urlencode([("job_id", job_id)])
+def fetch_tasks(job_id, status=None):
+  params = {"job_id": job_id}
+  if status is not None:
+    params["status"] = status
+  url = TEST_MASTER + "/tasks?" + urllib.urlencode(params)
   results_str = urllib2.urlopen(url).read()
   return json.loads(results_str)
 
@@ -186,10 +191,14 @@ def safe_name(s):
 
 def fetch(argv):
   p = optparse.OptionParser(
-      usage="usage: %prog fetch [options] <job-id>")
+      usage="usage: %prog fetch [options] [job-id]")
   p.add_option("-d", "--output-dir", dest="out_dir", type="string",
                help="directory into which to download logs", metavar="PATH",
                default="dist-test-results")
+  p.add_option("-l", "--logs", dest="logs", action="store_true", default=False,
+               help="Whether to download logs", metavar="PATH")
+  p.add_option("-a", "--artifacts", dest="artifacts", action="store_true", default=False,
+               help="Whether to download artifacts", metavar="PATH")
 
   options, args = p.parse_args()
 
@@ -202,35 +211,91 @@ def fetch(argv):
     p.error("no job id specified")
   job_id = args[0]
 
-  failed_tasks = fetch_failed_tasks(job_id)
-  if len(failed_tasks) == 0:
-    LOG.info("No failed tasks in provided job, or job does not exist")
+  if not options.logs and not options.artifacts:
+    p.error("Need to specify either --logs or --artifacts")
+
+  tasks = fetch_tasks(job_id, status="finished")
+  if len(tasks) == 0:
+    LOG.info("No tasks in specified job, or job does not exist")
     return
 
-  LOG.info("Fetching %d failed task logs into %s",
-               len(failed_tasks),
-               options.out_dir)
   try:
     os.makedirs(options.out_dir)
   except:
     pass
-  for t in failed_tasks:
-    filename = safe_name(t['task_id']) + "." + safe_name(t['description'])
-    path_prefix = os.path.join(options.out_dir, filename)
-    if 'stdout_link' in t:
-      path = path_prefix + ".stdout"
-      if not os.path.exists(path):
-        LOG.info("Fetching stdout for task %s into %s", t['task_id'], path)
-        urllib.urlretrieve(t['stdout_link'], path)
-    else:
-      LOG.info("No stdout for task %s" % t['task_id'])
-    if 'stderr_link' in t:
-      path = path_prefix + ".stderr"
-      if not os.path.exists(path):
-        LOG.info("Fetching stderr for task %s into %s", t['task_id'], path)
-        urllib.urlretrieve(t['stderr_link'], path)
-    else:
-      LOG.info("No stderr for task %s" % t['task_id'])
+  # Collect links, download at the end
+  log_links = []
+  log_paths = []
+  artifact_links = []
+  artifact_paths = []
+  for t in tasks:
+    filename_prefix = safe_name(t['task_id']) + "." + safe_name(t['description'])
+    path_prefix = os.path.join(options.out_dir, filename_prefix)
+    if options.logs:
+      if 'stdout_link' in t:
+        path = path_prefix + ".stdout"
+        log_links.append(t['stdout_link'])
+        log_paths.append(path)
+      else:
+        LOG.info("No stdout for task %s" % t['task_id'])
+      if 'stderr_link' in t:
+        path = path_prefix + ".stderr"
+        log_links.append(t['stderr_link'])
+        log_paths.append(path)
+      else:
+        LOG.info("No stderr for task %s" % t['task_id'])
+    if options.artifacts:
+      if 'artifact_archive_link' in t:
+        path = path_prefix + ".zip"
+        artifact_links.append(t['artifact_archive_link'])
+        artifact_paths.append(path)
+
+  if options.logs:
+    LOG.info("Fetching %d logs into %s",
+                len(log_links),
+                options.out_dir)
+    parallel_download(log_links, log_paths)
+
+  if options.artifacts:
+    LOG.info("Fetching %d artifacts into %s",
+                len(artifact_links),
+                options.out_dir)
+    parallel_download(artifact_links, artifact_paths)
+    LOG.info("Extracting %d artifacts into %s",
+                len(artifact_links),
+                options.out_dir)
+    parallel_extract(artifact_paths, options.out_dir)
+
+def download(link, path):
+  if not os.path.exists(path):
+    LOG.debug("Fetching %s into %s", link, path)
+    urllib.urlretrieve(link, path)
+    return path
+
+def parallel_download(links, paths):
+  pool = multiprocessing.Pool(processes=4)
+  results = []
+  for link, path in zip(links, paths):
+    results.append(pool.apply_async(download, (link, path)))
+  for r in results:
+    r.get()
+
+def extract(path, out_dir):
+  LOG.debug("Extracting %s into %s", path, out_dir)
+  with zipfile.ZipFile(path, "r") as myzip:
+    for info in myzip.infolist():
+      try:
+        myzip.extract(info, out_dir)
+      except OSError as e:
+        pass
+
+def parallel_extract(paths, out_dir):
+  pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
+  results = []
+  for path in paths:
+    results.append(pool.apply_async(extract, (path, out_dir)))
+  for r in results:
+    r.get()
 
 def cancel_job(argv):
   job_id = get_job_id_from_args("cancel", argv)
@@ -244,7 +309,7 @@ def usage(argv):
     submit  Submit a JSON file listing tasks
     cancel  Cancel a previously submitted job
     watch   Watch an already-submitted job ID
-    fetch   Fetch failed test logs from a previous job"""
+    fetch   Fetch test logs and artifacts from a previous job"""
   print >>sys.stderr, "%s <command> --help may provide further info" % argv[0]
 
 def main(argv):

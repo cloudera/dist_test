@@ -156,20 +156,36 @@ class DistTestServer(object):
   @cherrypy.expose
   @cherrypy.tools.json_out()
   def failed_tasks(self, job_id):
+    # Deprecated, use the "tasks" endpoint instead.
+    return self.tasks(job_id, status="failed")
+
+  @cherrypy.expose
+  @cherrypy.tools.json_out()
+  def tasks(self, job_id, status=None):
+    if status not in (None, "failed", "succeeded", "finished"):
+      return "Unknown status type"
+    # fetch all tasks and filter by status. By default (None) return all tasks.
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
-    ret = []
-    for t in tasks:
-      if t['status'] is not None and t['status'] != 0:
-        record = dict(task_id=t['task_id'],
-                      description=t['description'])
-        if t['stdout_key']:
-          record['stdout_link'] = self.results_store.generate_output_link(t['stdout_key'])
-        if t['stderr_key']:
-          record['stderr_link'] = self.results_store.generate_output_link(t['stderr_key'])
-        if t['artifact_archive_key']:
-          record['artifact_archive'] = self.results_store.generate_output_link(t['artifact_archive_key'])
-        ret.append(record)
-    return ret
+    filtered = tasks
+    if status == "failed":
+      filtered = [t for t in tasks if t['status'] is not None and t['status'] != 0]
+    elif status == "succeeded":
+      filtered = [t for t in tasks if t['status'] is not None and t['status'] == 0]
+    elif status == "finished":
+      filtered = [t for t in tasks if t['status'] is not None]
+    # construct a record for each filtered task
+    records = []
+    for t in filtered:
+      record = dict(task_id=t['task_id'],
+                    description=t['description'])
+      if t['stdout_key']:
+        record['stdout_link'] = self.results_store.generate_output_link(t['stdout_key'])
+      if t['stderr_key']:
+        record['stderr_link'] = self.results_store.generate_output_link(t['stderr_key'])
+      if t['artifact_archive_key']:
+        record['artifact_archive_link'] = self.results_store.generate_output_link(t['artifact_archive_key'])
+      records.append(record)
+    return records
 
   def _summarize_tasks(self, tasks, json_compatible=False):
     """Computes aggregate statistics on a set of tasks and groups tasks into groups based on task_id.

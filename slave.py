@@ -174,12 +174,12 @@ class Slave(object):
     test_dir = self.get_test_dir()
     artifact_archive = None
 
-    # Don't upload results from successful builds
+    # Don't upload logs from successful builds
     if rc == 0:
       stdout = None
       stderr = None
-    else:
-      artifact_archive = self.make_archive(task, test_dir)
+
+    artifact_archive = self.make_archive(task, test_dir)
 
     end_time = time.time()
     duration_secs = end_time - start_time
