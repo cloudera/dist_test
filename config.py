@@ -40,28 +40,28 @@ class Config(object):
     self.config.read(path)
 
     # Isolate settings
-    self.ISOLATE_HOME = self._get_with_env_default(*self.ISOLATE_HOME_CONFIG)
-    self.ISOLATE_SERVER = self._get_with_env_default(*self.ISOLATE_SERVER_CONFIG)
-    self.ISOLATE_CACHE_DIR = self._get_with_env_default(*self.ISOLATE_CACHE_DIR_CONFIG)
+    self.ISOLATE_HOME = self._get_with_env_override(*self.ISOLATE_HOME_CONFIG)
+    self.ISOLATE_SERVER = self._get_with_env_override(*self.ISOLATE_SERVER_CONFIG)
+    self.ISOLATE_CACHE_DIR = self._get_with_env_override(*self.ISOLATE_CACHE_DIR_CONFIG)
 
     # S3 settings
-    self.AWS_ACCESS_KEY = self._get_with_env_default(*self.AWS_ACCESS_KEY_CONFIG)
-    self.AWS_SECRET_KEY = self._get_with_env_default(*self.AWS_SECRET_KEY_CONFIG)
-    self.AWS_TEST_RESULT_BUCKET = self._get_with_env_default(*self.AWS_TEST_RESULT_BUCKET_CONFIG)
+    self.AWS_ACCESS_KEY = self._get_with_env_override(*self.AWS_ACCESS_KEY_CONFIG)
+    self.AWS_SECRET_KEY = self._get_with_env_override(*self.AWS_SECRET_KEY_CONFIG)
+    self.AWS_TEST_RESULT_BUCKET = self._get_with_env_override(*self.AWS_TEST_RESULT_BUCKET_CONFIG)
 
     # MySQL settings
-    self.MYSQL_HOST = self._get_with_env_default(*self.MYSQL_HOST_CONFIG)
-    self.MYSQL_USER = self._get_with_env_default(*self.MYSQL_USER_CONFIG)
-    self.MYSQL_PWD = self._get_with_env_default(*self.MYSQL_PWD_CONFIG)
-    self.MYSQL_DB = self._get_with_env_default(*self.MYSQL_DB_CONFIG)
+    self.MYSQL_HOST = self._get_with_env_override(*self.MYSQL_HOST_CONFIG)
+    self.MYSQL_USER = self._get_with_env_override(*self.MYSQL_USER_CONFIG)
+    self.MYSQL_PWD = self._get_with_env_override(*self.MYSQL_PWD_CONFIG)
+    self.MYSQL_DB = self._get_with_env_override(*self.MYSQL_DB_CONFIG)
 
     # Beanstalk settings
-    self.BEANSTALK_HOST = self._get_with_env_default(*self.BEANSTALK_HOST_CONFIG)
+    self.BEANSTALK_HOST = self._get_with_env_override(*self.BEANSTALK_HOST_CONFIG)
 
     # dist_test settings
     if not self.config.has_section('dist_test'):
       self.config.add_section('dist_test')
-    self.DIST_TEST_MASTER = self._get_with_env_default(*self.DIST_TEST_MASTER_CONFIG)
+    self.DIST_TEST_MASTER = self._get_with_env_override(*self.DIST_TEST_MASTER_CONFIG)
 
     self.log_dir = self.config.get('dist_test', 'log_dir')
     # Make the log directory if it doesn't exist
@@ -83,10 +83,14 @@ class Config(object):
       else:
         raise
 
-  def _get_with_env_default(self, section, option, env_key):
+  def _get_with_env_override(self, section, option, env_key):
+    env_value = os.environ.get(env_key)
+    if env_value is not None:
+      return env_value
+    file_value = None
     if self.config.has_option(section, option):
-      return self.config.get(section, option)
-    return os.environ.get(env_key)
+      file_value = self.config.get(section, option)
+    return file_value
 
   def ensure_aws_configured(self):
     self._ensure_configs([self.AWS_ACCESS_KEY_CONFIG,
@@ -112,6 +116,6 @@ class Config(object):
 
   def _ensure_configs(self, configs):
     for config in configs:
-      if self._get_with_env_default(*config) is None:
+      if self._get_with_env_override(*config) is None:
         raise Exception(("Missing configuration %s.%s. Please set in the config file or " +
                          "set the environment variable %s.") % config)
