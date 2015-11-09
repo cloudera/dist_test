@@ -100,7 +100,7 @@ class MavenProject:
                     found = True
                     break
             if not found:
-                raise Exception("Could not find a parent of Maven submoodule at %s" % mod_path)
+                raise Exception("Could not find a parent of Maven submodule at %s, have you run mvn package?" % mod_path)
             # Append self to parent's list of children
             parent_module = path_to_module[parent_path]
             parent_module.submodules.append(path_to_module[mod_path])
