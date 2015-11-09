@@ -388,7 +388,7 @@ class TestRunner:
                 task = {"isolate_hash" : str(v),
                         "description" : str(k),
                         "timeout": self.args.timeout,
-                        "artifact_archive_globs" : ["**/surefire-reports/TEST-*.xml", "**/surefire-reports/*.txt"]
+                        "artifact_archive_globs" : ["**/surefire-reports/TEST-*.xml"]
                         }
                 if self.args.retries > 0:
                     task["max_retries"] = self.args.retries
