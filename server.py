@@ -43,6 +43,8 @@ class DistTestServer(object):
   @cherrypy.expose
   def job(self, job_id, task_id=None):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
+    if len(tasks) == 0:
+      return "No tasks found for specified job_id %s" % job_id
     job_summary, task_groups = self._summarize_tasks(tasks)
     body = ""
     body += self._render_job_header(job_id, job_summary, task_groups)
@@ -332,7 +334,7 @@ class DistTestServer(object):
 
   def _generate_view_link(self, task, output):
     return "/view_log?job_id=%s&task_id=%s&attempt=%s&log=%s" % \
-        (urllib.quote(task["job_id"]), urllib.quote(task["task_id"]), urllib.quote(task["attempt"]), urllib.quote(output))
+        (urllib.quote(task["job_id"]), urllib.quote(task["task_id"]), urllib.quote(str(task["attempt"])), urllib.quote(output))
 
 
   def _render_tasks(self, tasks, job_summary, task_groups):
