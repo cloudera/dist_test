@@ -65,20 +65,30 @@ class Slave(object):
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
-  def get_test_dir(self):
+  def parse_test_dir(self, stderr):
     # Find the test_dir for this invocation of run_isolated.py
-    # FIXME: this is done by looking for the most recent ctime for /tmp/run_tha_test*
-    # which is not reliable if multiple slaves share the same host
-    base_dir = "/tmp"
-    paths = [p for p in os.listdir(base_dir) if p.startswith("run_tha_test")]
-    paths = [os.path.join(base_dir, p) for p in paths]
-    ctime_path  = sorted([(os.stat(p).st_ctime, p) for p in paths])
-    if len(ctime_path) == 0:
+    # FIXME: this is done by parsing the stderr of invoking run_isolated.py, which is
+    # far from bullet-proof.
+    #
+    # Example:
+    # WARNING   3420    run_isolated(197): Deliberately leaking /tmp/run_tha_test1r2oKG for later examination
+    test_dir = None
+    for line in stderr.splitlines():
+      splitted = line.split()
+      if len(splitted) == 9 and \
+         splitted[3] == "Deliberately" and \
+         splitted[4] == "leaking":
+          test_dir = splitted[5]
+          # Do not break early, we want the last stderr line that matches
+
+    if test_dir is None:
       LOG.warn("No run_tha_test directory found!")
       return None
-    _, test_dir = ctime_path[-1]
-    return test_dir
+    if not os.path.exists(test_dir):
+      LOG.warn("Parsed run_tha_test directory does not actually exist!")
+      return None
 
+    return test_dir
 
   def make_archive(self, task, test_dir):
     # Return early if no test_dir is specified
@@ -174,7 +184,7 @@ class Slave(object):
       isolated_out = json.loads(m.group(1))
       output_archive_hash = isolated_out['hash']
 
-    test_dir = self.get_test_dir()
+    test_dir = self.parse_test_dir(stderr)
     artifact_archive = None
 
     # Don't upload logs from successful builds
