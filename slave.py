@@ -114,12 +114,15 @@ class Slave(object):
 
     # Write out the archive
     archive_name = os.path.join("/tmp", task.task.get_id() + "-artifacts.zip")
-    with zipfile.ZipFile(archive_name, "w") as myzip:
+    myzip = zipfile.ZipFile(archive_name, "w")
+    try:
       for m in all_matched:
         arcname = os.path.relpath(m, test_dir)
         while arcname.startswith("/"):
           arcname = arcname[1:]
         myzip.write(m, arcname)
+    finally:
+      myzip.close()
 
     return archive_name
 
