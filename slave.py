@@ -81,6 +81,9 @@ class Slave(object):
 
 
   def make_archive(self, task, test_dir):
+    # Return early if no test_dir is specified
+    if test_dir is None:
+      return None
     # Return early if there are no globs specified
     if task.task.artifact_archive_globs is None or len(task.task.artifact_archive_globs) == 0:
       return None
@@ -193,8 +196,9 @@ class Slave(object):
                                           duration_secs=duration_secs)
 
     # Do cleanup of temp files
-    LOG.info("Removing test directory %s" % test_dir)
-    shutil.rmtree(test_dir)
+    if test_dir is not None:
+      LOG.info("Removing test directory %s" % test_dir)
+      shutil.rmtree(test_dir)
     if artifact_archive is not None:
       os.remove(artifact_archive)
 
