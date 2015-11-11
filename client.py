@@ -154,6 +154,13 @@ def submit(argv):
                dest="name",
                default="",
                help="Job name prefix, will be mangled for additional uniqueness")
+  p.add_option("-d", "--output-dir", dest="out_dir", type="string",
+               help="directory into which to download logs", metavar="PATH",
+               default="dist-test-results")
+  p.add_option("-l", "--logs", dest="logs", action="store_true", default=False,
+               help="Whether to download logs", metavar="PATH")
+  p.add_option("-a", "--artifacts", dest="artifacts", action="store_true", default=False,
+               help="Whether to download artifacts", metavar="PATH")
   options, args = p.parse_args()
 
   if len(args) != 1:
@@ -161,7 +168,10 @@ def submit(argv):
     sys.exit(1)
 
   job_id = submit_job_json(options.name, file(args[0]).read())
-  sys.exit(do_watch_results(job_id))
+  retcode = do_watch_results(job_id)
+  if options.artifacts:
+    _fetch(job_id, options.artifacts, options.logs, options.out_dir)
+  sys.exit(retcode)
 
 def get_job_id_from_args(command, args):
   if len(args) == 1:
@@ -214,13 +224,17 @@ def fetch(argv):
   if not options.logs and not options.artifacts:
     p.error("Need to specify either --logs or --artifacts")
 
+  _fetch(job_id, options.artifacts, options.logs, options.out_dir)
+
+def _fetch(job_id, artifacts, logs, out_dir):
+  # Fetch the finished tasks for the job
   tasks = fetch_tasks(job_id, status="finished")
   if len(tasks) == 0:
     LOG.info("No tasks in specified job, or job does not exist")
     return
-
+  # Attempt to make the output directory
   try:
-    os.makedirs(options.out_dir)
+    os.makedirs(out_dir)
   except:
     pass
   # Collect links, download at the end
@@ -230,8 +244,8 @@ def fetch(argv):
   artifact_paths = []
   for t in tasks:
     filename_prefix = safe_name(t['task_id']) + "." + safe_name(t['description'])
-    path_prefix = os.path.join(options.out_dir, filename_prefix)
-    if options.logs:
+    path_prefix = os.path.join(out_dir, filename_prefix)
+    if logs:
       if 'stdout_link' in t:
         path = path_prefix + ".stdout"
         log_links.append(t['stdout_link'])
@@ -244,43 +258,43 @@ def fetch(argv):
         log_paths.append(path)
       else:
         LOG.info("No stderr for task %s" % t['task_id'])
-    if options.artifacts:
+    if artifacts:
       if 'artifact_archive_link' in t:
         path = path_prefix + ".zip"
         artifact_links.append(t['artifact_archive_link'])
         artifact_paths.append(path)
 
-  if options.logs:
+  if logs:
     LOG.info("Fetching %d logs into %s",
                 len(log_links),
-                options.out_dir)
-    parallel_download(log_links, log_paths)
+                out_dir)
+    _parallel_download(log_links, log_paths)
 
-  if options.artifacts:
+  if artifacts:
     LOG.info("Fetching %d artifacts into %s",
                 len(artifact_links),
-                options.out_dir)
-    parallel_download(artifact_links, artifact_paths)
+                out_dir)
+    _parallel_download(artifact_links, artifact_paths)
     LOG.info("Extracting %d artifacts into %s",
                 len(artifact_links),
-                options.out_dir)
-    parallel_extract(artifact_paths, options.out_dir)
+                out_dir)
+    _parallel_extract(artifact_paths, out_dir)
 
-def download(link, path):
+def _download(link, path):
   if not os.path.exists(path):
     LOG.debug("Fetching %s into %s", link, path)
     urllib.urlretrieve(link, path)
     return path
 
-def parallel_download(links, paths):
-  pool = multiprocessing.Pool(processes=4)
+def _parallel_download(links, paths):
+  pool = multiprocessing.Pool(processes=int(multiprocessing.cpu_count()*1.5))
   results = []
   for link, path in zip(links, paths):
-    results.append(pool.apply_async(download, (link, path)))
+    results.append(pool.apply_async(_download, (link, path)))
   for r in results:
     r.get()
 
-def extract(path, out_dir):
+def _extract(path, out_dir):
   LOG.debug("Extracting %s into %s", path, out_dir)
   with zipfile.ZipFile(path, "r") as myzip:
     for info in myzip.infolist():
@@ -289,11 +303,11 @@ def extract(path, out_dir):
       except OSError as e:
         pass
 
-def parallel_extract(paths, out_dir):
+def _parallel_extract(paths, out_dir):
   pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
   results = []
   for path in paths:
-    results.append(pool.apply_async(extract, (path, out_dir)))
+    results.append(pool.apply_async(_extract, (path, out_dir)))
   for r in results:
     r.get()
 
