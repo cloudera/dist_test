@@ -234,6 +234,11 @@ class TestRunner:
                             dest='exclude_patterns',
                             help="Exclude pattern for unittests." \
                             + "Takes precedence over include patterns. Supports globbing. Can be specified multiple times.")
+        # Download artifacts
+        parser.add_argument('-a', '--artifacts',
+                            action='store_true',
+                            dest='artifacts',
+                            help="Whether to download test artifacts.")
         # Misc
         parser.add_argument('-n', '--num',
                             type=int,
@@ -322,12 +327,17 @@ class TestRunner:
         tasks_file = os.path.join(self.output_dir, "run.json")
         self.isolate_hashes_to_tasks(hashes_file, tasks_file)
 
+        artifacts_flag = ""
+        if self.args.artifacts:
+            artifacts_flag = "--artifacts"
+
         if self.args.dry_run:
             logging.info("Dry run, skipping test submission")
         else:
             # Call the dist_test client
-            cmd = "%s submit --name %s %s" % \
+            cmd = "%s submit %s --name %s %s" % \
                     (self.config.dist_test_client_path, \
+                     artifacts_flag, \
                      os.path.basename(self.project_dir), \
                      tasks_file)
             logger.info("Calling %s", cmd)
