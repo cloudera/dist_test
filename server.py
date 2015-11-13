@@ -179,6 +179,7 @@ class DistTestServer(object):
     records = []
     for t in filtered:
       record = dict(task_id=t['task_id'],
+                    attempt=t['attempt'],
                     description=t['description'])
       if t['stdout_key']:
         record['stdout_link'] = self.results_store.generate_output_link(t['stdout_key'])

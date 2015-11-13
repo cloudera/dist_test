@@ -197,7 +197,7 @@ def fetch_tasks(job_id, status=None):
   return json.loads(results_str)
 
 def safe_name(s):
-  return "".join([c.isalnum() and c or "_" for c in s])
+  return "".join([c.isalnum() and c or "_" for c in str(s)])
 
 def fetch(argv):
   p = optparse.OptionParser(
@@ -243,7 +243,7 @@ def _fetch(job_id, artifacts, logs, out_dir):
   artifact_links = []
   artifact_paths = []
   for t in tasks:
-    filename_prefix = safe_name(t['task_id']) + "." + safe_name(t['description'])
+    filename_prefix = ".".join((safe_name(t['task_id']), safe_name(t['attempt']), safe_name(t['description'])))
     path_prefix = os.path.join(out_dir, filename_prefix)
     if logs:
       if 'stdout_link' in t:
