@@ -281,10 +281,19 @@ def _fetch(job_id, artifacts, logs, out_dir):
     _parallel_extract(artifact_paths, out_dir)
 
 def _download(link, path):
-  if not os.path.exists(path):
-    LOG.debug("Fetching %s into %s", link, path)
-    urllib.urlretrieve(link, path)
-    return path
+  for x in range(3):
+    try:
+      if not os.path.exists(path):
+        LOG.debug("Fetching %s into %s", link, path)
+        urllib.urlretrieve(link, path)
+        return path
+      else:
+        LOG.debug("Skipping already downloaded path %s" % path)
+    except Exception as e:
+      LOG.info("Retrying download of %s to %s" % (link, path))
+      # Remove possible partially downloaded file
+      if os.path.exists(path):
+        os.remove(path)
 
 def _parallel_download(links, paths):
   pool = multiprocessing.Pool(processes=int(multiprocessing.cpu_count()*1.5))
@@ -292,16 +301,29 @@ def _parallel_download(links, paths):
   for link, path in zip(links, paths):
     results.append(pool.apply_async(_download, (link, path)))
   for r in results:
-    r.get()
+    try:
+      r.get()
+    except Exception as e:
+      pass
 
 def _extract(path, out_dir):
-  LOG.debug("Extracting %s into %s", path, out_dir)
-  with zipfile.ZipFile(path, "r") as myzip:
-    for info in myzip.infolist():
-      try:
-        myzip.extract(info, out_dir)
-      except OSError as e:
-        pass
+  # Use the zipfile's basename for uniqueness
+  zipname = os.path.basename(path)
+  assert zipname.endswith(".zip")
+  zipname = zipname[:-len(".zip")]
+  dest_path = os.path.join(out_dir, zipname)
+  if not os.path.exists(dest_path):
+    os.makedirs(dest_path)
+    LOG.debug("Extracting %s into %s", path, dest_path)
+    try:
+      with zipfile.ZipFile(path, "r") as myzip:
+        for info in myzip.infolist():
+            myzip.extract(info, dest_path)
+    except Exception as e:
+      print >> sys.stderr, "Error extracting %s: %s" % (path, e)
+
+  else:
+    LOG.debug("Skipping extracting %s, destination already exists" % path)
 
 def _parallel_extract(paths, out_dir):
   pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
@@ -309,7 +331,10 @@ def _parallel_extract(paths, out_dir):
   for path in paths:
     results.append(pool.apply_async(_extract, (path, out_dir)))
   for r in results:
-    r.get()
+    try:
+      r.get()
+    except Exception as e:
+      print >> sys.stderr, "Error during extraction: %s" % e
 
 def cancel_job(argv):
   job_id = get_job_id_from_args("cancel", argv)
