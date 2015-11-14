@@ -136,11 +136,15 @@ def submit_job_json(job_prefix, job_json):
     job_prefix += "."
   job_id = job_prefix + generate_job_id()
   form_data = urllib.urlencode({'job_id': job_id, 'job_json': job_json})
-  result_str = urllib2.urlopen(TEST_MASTER + "/submit_job",
-                               data=form_data).read()
+  url = TEST_MASTER + "/submit_job";
+  try:
+    result_str = urllib2.urlopen(url, data=form_data).read()
+  except Exception as s:
+    sys.stderr.write("Unable to submit job to server %s: %s\n" % (url, s))
+    raise s
   result = json.loads(result_str)
   if result.get('status') != 'SUCCESS':
-    sys.err.println("Unable to submit job: %s" % repr(result))
+    sys.stderr.write("Unable to submit job: %s\n" % repr(result))
     sys.exit(1)
 
   save_last_job_id(job_id)
