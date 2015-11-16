@@ -20,15 +20,23 @@ try:
 except:
   import json
 import subprocess
+import threading
 import time
 import zipfile
 
 from config import Config
 import dist_test
 
+import metrics
+
 RUN_ISOLATED_OUT_RE = re.compile(r'\[run_isolated_out_hack\](.+?)\[/run_isolated_out_hack\]',
                                  re.DOTALL)
 LOG = None
+
+# Number of seconds over which to compute the load average for metrics.
+# The load average is the percentage of time over the last N seconds
+# during which the slave was running a job.
+NUM_SECONDS_LOAD_AVERAGE = 30
 
 class Slave(object):
 
@@ -39,6 +47,8 @@ class Slave(object):
     self.task_queue = dist_test.TaskQueue(self.config)
     self.results_store = dist_test.ResultsStore(self.config)
     self.cache_dir = self._get_exclusive_cache_dir()
+    self.metrics_collector = metrics.MetricsCollector()
+    self.is_busy = False
 
   def _get_exclusive_cache_dir(self):
     for i in xrange(0, 16):
@@ -184,6 +194,7 @@ class Slave(object):
 
       if time.time() - last_touch > 10:
         LOG.info("Still running: " + task.task.description)
+        self.submit_load_metric(1)
         try:
           bs_job.touch()
         except:
@@ -238,17 +249,41 @@ class Slave(object):
     if result.get('status') != 'SUCCESS':
       sys.err.println("Unable to submit retry task: %s" % repr(result))
 
+  def submit_load_metric(self, load):
+    try:
+      self.metrics_collector.submit(load)
+    except Exception, e:
+      logging.warning("Failed to submit load metric: %s" % str(e))
+
+  def run_metrics_thread(self):
+    ring_buffer = [False for x in range(NUM_SECONDS_LOAD_AVERAGE)]
+    i = 0
+    while True:
+      ring_buffer[i % len(ring_buffer)] = self.is_busy
+      i += 1
+      load = sum(ring_buffer) / float(len(ring_buffer))
+      time.sleep(1)
+      if i % 10 == 0:
+        self.submit_load_metric(load)
+
   def run(self):
+    metrics_thread = threading.Thread(target=self.run_metrics_thread)
+    metrics_thread.daemon = True
+    metrics_thread.start()
     while True:
       try:
+        logging.info("waiting for next task...")
+        self.is_busy = False
         task = self.task_queue.reserve_task()
       except Exception, e:
         LOG.warning("Failed to reserve job: %s" % str(e))
         time.sleep(1)
         continue
       LOG.info("got task: %s", task.task.to_json())
+      self.is_busy = True
       self.run_task(task, task.bs_elem)
       try:
+        logging.info("task complete")
         task.bs_elem.delete()
       except Exception, e:
         LOG.warning("Failed to delete job: %s" % str(e))
