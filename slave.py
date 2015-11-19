@@ -19,7 +19,9 @@ try:
   import simplejson as json
 except:
   import json
+import signal
 import subprocess
+import sys
 import threading
 import time
 import zipfile
@@ -48,6 +50,7 @@ class Slave(object):
     self.results_store = dist_test.ResultsStore(self.config)
     self.cache_dir = self._get_exclusive_cache_dir()
     self.metrics_collector = metrics.MetricsCollector()
+    self.cur_task = None
     self.is_busy = False
 
   def _get_exclusive_cache_dir(self):
@@ -148,7 +151,7 @@ class Slave(object):
     return archive_buffer
 
 
-  def run_task(self, task, bs_job):
+  def run_task(self, task):
     cmd = [os.path.join(self.config.ISOLATE_HOME, "run_isolated.py"),
            "--isolate-server=%s" % self.config.ISOLATE_SERVER,
            "--cache=%s" % self.cache_dir,
@@ -196,7 +199,7 @@ class Slave(object):
         LOG.info("Still running: " + task.task.description)
         self.submit_load_metric(1)
         try:
-          bs_job.touch()
+          self.bs_elem.touch()
         except:
           pass
         last_touch = time.time()
@@ -266,6 +269,13 @@ class Slave(object):
       if i % 10 == 0:
         self.submit_load_metric(load)
 
+  def handle_sigterm(self):
+    logging.error("caught SIGTERM! shutting down")
+    if self.cur_task is not None:
+      logging.warning("releasing running job")
+      self.cur_task.bs_elem.release()
+    os._exit(0)
+
   def run(self):
     metrics_thread = threading.Thread(target=self.run_metrics_thread)
     metrics_thread.daemon = True
@@ -274,20 +284,21 @@ class Slave(object):
       try:
         logging.info("waiting for next task...")
         self.is_busy = False
-        task = self.task_queue.reserve_task()
+        self.cur_task = self.task_queue.reserve_task()
       except Exception, e:
         LOG.warning("Failed to reserve job: %s" % str(e))
         time.sleep(1)
         continue
-      LOG.info("got task: %s", task.task.to_json())
+      LOG.info("got task: %s", self.cur_task.task.to_json())
       self.is_busy = True
-      self.run_task(task, task.bs_elem)
+      self.run_task(self.cur_task)
       try:
         logging.info("task complete")
-        task.bs_elem.delete()
+        self.cur_task.bs_elem.delete()
       except Exception, e:
         LOG.warning("Failed to delete job: %s" % str(e))
-        continue
+      finally:
+        self.cur_task = None
 
 
 def main():
@@ -298,7 +309,9 @@ def main():
   dist_test.configure_logger(LOG, config.SLAVE_LOG)
 
   LOG.info("Starting slave")
-  Slave(config).run()
+  s = Slave(config)
+  signal.signal(signal.SIGTERM, lambda sig, stack: s.handle_sigterm())
+  s.run()
 
 if __name__ == "__main__":
   main()
