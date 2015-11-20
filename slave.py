@@ -2,6 +2,7 @@
 
 import beanstalkc
 import boto
+import cStringIO
 import errno
 import fcntl
 import glob2
@@ -113,8 +114,8 @@ class Slave(object):
       return None
 
     # Write out the archive
-    archive_name = os.path.join("/tmp", task.task.get_id() + "-artifacts.zip")
-    myzip = zipfile.ZipFile(archive_name, "w")
+    archive_buffer = cStringIO.StringIO()
+    myzip = zipfile.ZipFile(archive_buffer, "w")
     try:
       for m in all_matched:
         arcname = os.path.relpath(m, test_dir)
@@ -124,7 +125,7 @@ class Slave(object):
     finally:
       myzip.close()
 
-    return archive_name
+    return archive_buffer
 
 
   def run_task(self, task, bs_job):
@@ -213,7 +214,7 @@ class Slave(object):
       LOG.info("Removing test directory %s" % test_dir)
       shutil.rmtree(test_dir)
     if artifact_archive is not None:
-      os.remove(artifact_archive)
+      artifact_archive.close()
 
     # Retry if non-zero exit code and have retries remaining
     if rc != 0 and task.task.attempt < task.task.max_retries:

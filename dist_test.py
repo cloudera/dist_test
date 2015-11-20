@@ -217,8 +217,8 @@ class ResultsStore(object):
       logging.info("Uploaded stderr for %s to S3" % task.get_id())
 
     if artifact_archive:
-      artifact_archive_key = os.path.basename(artifact_archive)
-      self._upload_file_to_s3(artifact_archive_key, artifact_archive)
+      artifact_archive_key = "%s-artifacts.zip" % task.get_id()
+      self._upload_string_to_s3(artifact_archive_key, artifact_archive.getvalue())
       logging.info("Uploaded artifact archive for %s to S3" % task.get_id())
 
     parms = dict(result_code=result_code,
@@ -309,11 +309,6 @@ class ResultsStore(object):
     # incorrectly if you pass a unicode string.
     k.set_metadata('Content-Disposition', str('inline; filename=%s' % key))
     k.set_contents_from_string(data, reduced_redundancy=True)
-
-  def _upload_file_to_s3(self, key, input_file):
-    k = boto.s3.key.Key(self.s3_bucket)
-    k.key = key
-    k.set_contents_from_filename(input_file)
 
 def configure_logger(logger, filename):
   handlers = []
