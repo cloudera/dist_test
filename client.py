@@ -281,7 +281,8 @@ def _fetch(job_id, artifacts, logs, out_dir):
     _parallel_extract(artifact_paths, out_dir)
 
 def _download(link, path):
-  for x in range(3):
+  max_attempts = 3
+  for x in range(max_attempts):
     try:
       if not os.path.exists(path):
         LOG.debug("Fetching %s into %s", link, path)
@@ -290,10 +291,13 @@ def _download(link, path):
       else:
         LOG.debug("Skipping already downloaded path %s" % path)
     except Exception as e:
-      LOG.info("Retrying download of %s to %s" % (link, path))
       # Remove possible partially downloaded file
       if os.path.exists(path):
         os.remove(path)
+      if x < max_attempts - 1:
+        LOG.info("Retrying download of %s to %s" % (link, path))
+      else:
+        raise
 
 def _parallel_download(links, paths):
   pool = multiprocessing.Pool(processes=int(multiprocessing.cpu_count()*1.5))
@@ -304,7 +308,7 @@ def _parallel_download(links, paths):
     try:
       r.get()
     except Exception as e:
-      pass
+      raise
 
 def _extract(path, out_dir):
   # Use the zipfile's basename for uniqueness
@@ -321,6 +325,7 @@ def _extract(path, out_dir):
             myzip.extract(info, dest_path)
     except Exception as e:
       print >> sys.stderr, "Error extracting %s: %s" % (path, e)
+      raise
 
   else:
     LOG.debug("Skipping extracting %s, destination already exists" % path)
