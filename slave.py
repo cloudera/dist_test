@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import with_statement
 import beanstalkc
 import boto
 import cStringIO
@@ -114,15 +115,12 @@ class Slave(object):
 
     # Write out the archive
     archive_buffer = cStringIO.StringIO()
-    myzip = zipfile.ZipFile(archive_buffer, "w")
-    try:
+    with zipfile.ZipFile(archive_buffer, "w") as myzip:
       for m in all_matched:
         arcname = os.path.relpath(m, test_dir)
         while arcname.startswith("/"):
           arcname = arcname[1:]
         myzip.write(m, arcname)
-    finally:
-      myzip.close()
 
     return archive_buffer
 
