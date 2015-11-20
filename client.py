@@ -30,48 +30,49 @@ RESET = "\x1b[m"
 LOG = logging.getLogger('dist_test.client')
 LOG.setLevel(logging.INFO)
 
+def is_tty():
+  return hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+
+def ontty(msg):
+  if is_tty():
+    return msg
+  return ""
+
 def generate_job_id():
   return "%s.%d.%d" % (getpass.getuser(), int(time.time()), os.getpid())
 
-def print_status(start_time, previous_result, result,
-                 interactive=False, first=False, retcode=None):
+def print_status(start_time, previous_result, result, first=False, retcode=None):
   # In non-interactive mode, do not print unless the result changed
-  if not interactive and previous_result is not None:
+  if not is_tty() and previous_result is not None:
     if previous_result['finished_tasks'] == result['finished_tasks']:
       return
 
   # In interactive mode, delete the previous line of output after the first
-  if interactive and not first:
-    sys.stdout.write("\x1b[F\x1b[2K")
+  if not first:
+    sys.stdout.write(ontty("\x1b[F\x1b[2K"))
 
   run_time = time.time() - start_time
-  if interactive and retcode is not None:
+  if retcode is not None:
     if retcode == 0:
-      sys.stdout.write(GREEN)
+      sys.stdout.write(ontty(GREEN))
     else:
-      sys.stdout.write(RED)
+      sys.stdout.write(ontty(RED))
 
   sys.stdout.write(" %.1fs\t" % run_time)
 
   sys.stdout.write(" %d/%d tests complete" % \
       (result['finished_groups'], result['total_groups']))
 
-  if interactive and retcode is not None:
-    sys.stdout.write(RESET)
+  if retcode is not None:
+    sys.stdout.write(ontty(RESET))
 
   if result['failed_groups']:
     p = " (%d failed)" % result['failed_groups']
-    if interactive:
-      sys.stdout.write(RED + p + RESET)
-    else:
-      sys.stdout.write(p)
+    sys.stdout.write(ontty(RED) + p + ontty(RESET))
 
   if result['retried_tasks']:
     p = " (%d retries)" % result['retried_tasks']
-    if interactive:
-      sys.stdout.write(YELLOW + p + RESET)
-    else:
-      sys.stdout.write(p)
+    sys.stdout.write(ontty(YELLOW) + p + ontty(RESET))
 
   sys.stdout.write("\n")
 
@@ -93,8 +94,6 @@ def do_watch_results(job_id):
   url = TEST_MASTER + "/job_status?" + urllib.urlencode([("job_id", job_id)])
   start_time = time.time()
 
-  # We can detect a non-interactive Jenkins environment by checking for BUILD_ID
-  interactive = "BUILD_ID" not in os.environ.keys()
   first = True
   previous_result = None
   while True:
@@ -102,7 +101,7 @@ def do_watch_results(job_id):
     result = json.loads(result_str)
 
     retcode = get_return_code(result)
-    print_status(start_time, previous_result, result, interactive=interactive, first=first, retcode=retcode)
+    print_status(start_time, previous_result, result, first=first, retcode=retcode)
     first = False
 
     previous_result = result
