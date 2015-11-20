@@ -74,19 +74,18 @@ class Slave(object):
     # Example:
     # WARNING   3420    run_isolated(197): Deliberately leaking /tmp/run_tha_test1r2oKG for later examination
     test_dir = None
+    pattern = re.compile(r"WARNING[ ]+[\d]+[ ]+run_isolated.*: Deliberately leaking (.*) for later examination")
     for line in stderr.splitlines():
-      splitted = line.split()
-      if len(splitted) == 9 and \
-         splitted[3] == "Deliberately" and \
-         splitted[4] == "leaking":
-          test_dir = splitted[5]
-          # Do not break early, we want the last stderr line that matches
+      m = pattern.match(line)
+      if m is not None:
+        test_dir = m.group(1)
+        # Do not break early, we want the last stderr line that matches
 
     if test_dir is None:
       LOG.warn("No run_tha_test directory found!")
       return None
     if not os.path.exists(test_dir):
-      LOG.warn("Parsed run_tha_test directory does not actually exist!")
+      LOG.warn("Parsed run_tha_test directory %s does not actually exist!" % test_dir)
       return None
 
     return test_dir
