@@ -157,9 +157,9 @@ def submit(argv):
                help="directory into which to download logs", metavar="PATH",
                default="dist-test-results")
   p.add_option("-l", "--logs", dest="logs", action="store_true", default=False,
-               help="Whether to download logs", metavar="PATH")
+               help="Whether to download logs")
   p.add_option("-a", "--artifacts", dest="artifacts", action="store_true", default=False,
-               help="Whether to download artifacts", metavar="PATH")
+               help="Whether to download artifacts")
   options, args = p.parse_args()
 
   if len(args) != 1:
