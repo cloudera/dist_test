@@ -97,6 +97,7 @@ class Slave(object):
     if task.task.artifact_archive_globs is None or len(task.task.artifact_archive_globs) == 0:
       return None
     all_matched = set()
+    total_size = 0
     for g in task.task.artifact_archive_globs:
       try:
           matched = glob2.iglob(test_dir + "/" + g)
@@ -105,11 +106,25 @@ class Slave(object):
             if not canonical.startswith(test_dir):
               LOG.warn("Glob %s matched file outside of test_dir, skipping: %s" % (g, canonical))
               continue
-            all_matched.add(os.path.realpath(m))
+            total_size += os.stat(canonical).st_size
+            all_matched.add(canonical)
       except Exception as e:
         LOG.warn("Error while globbing %s: %s" % (g, e))
+
     if len(all_matched) == 0:
       return None
+    max_size = 200*1024*1024 # 200MB max uncompressed size
+    if total_size > max_size:
+      # If size exceeds the maximum size, upload a zip with an error message instead
+      LOG.info("Task %s generated too many bytes of matched artifacts (%d > %d)," \
+               + "uploading archive with error message instead.",
+              task.task.get_id(), total_size, max_size)
+      archive_buffer = cStringIO.StringIO()
+      with zipfile.ZipFile(archive_buffer, "w") as myzip:
+        myzip.writestr("_ARCHIVE_TOO_BIG_",
+                       "Size of matched uncompressed test artifacts exceeded maximum size" \
+                       + "(%d bytes > %d bytes)!" % (total_size, max_size))
+      return archive_buffer
 
     # Write out the archive
     archive_buffer = cStringIO.StringIO()
