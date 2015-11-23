@@ -32,8 +32,6 @@ LOG = None
 
 class Slave(object):
 
-  global LOG
-
   def __init__(self, config):
     self.config = config
     self.config.ensure_isolate_configured()

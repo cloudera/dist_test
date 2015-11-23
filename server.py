@@ -26,8 +26,6 @@ LOG = None
 
 class DistTestServer(object):
 
-  global LOG
-
   def __init__(self, config):
     self.config = config
     self.task_queue = dist_test.TaskQueue(self.config)
