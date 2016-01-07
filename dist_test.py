@@ -14,6 +14,10 @@ except:
 import socket
 import threading
 
+# We don't actually use 'yaml' here. But, without yaml available,
+# beanstalkc will fall back to providing string results for stats()
+# and stats_tube(). So, we import it just to make sure it's around.
+import yaml
 import config
 
 class Task(object):
