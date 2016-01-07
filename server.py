@@ -1,21 +1,31 @@
 #!/usr/bin/env python
 
+from __future__ import with_statement
 import base64
+import cgi
 import cherrypy
 import datetime
-import dist_test
 import logging
 import os
 from jinja2 import Template
 import urllib
-import simplejson
+try:
+  import simplejson as json
+except:
+  import json
 import StringIO
 import gzip
 from collections import defaultdict
 
+from config import Config
+import dist_test
+
 TRACE_HTML = os.path.join(os.path.dirname(__file__), "trace.html")
 
+LOG = None
+
 class DistTestServer(object):
+
   def __init__(self, config):
     self.config = config
     self.task_queue = dist_test.TaskQueue(self.config)
@@ -32,6 +42,8 @@ class DistTestServer(object):
   @cherrypy.expose
   def job(self, job_id, task_id=None):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
+    if len(tasks) == 0:
+      return "No tasks found for specified job_id %s" % job_id
     job_summary, task_groups = self._summarize_tasks(tasks)
     body = ""
     body += self._render_job_header(job_id, job_summary, task_groups)
@@ -54,13 +66,29 @@ class DistTestServer(object):
                         dur=self._delta_us(task['complete_timestamp'] - task['start_timestamp']),
                         ts=self._delta_us(task['start_timestamp'] - min_st)))
     trace_gz = StringIO.StringIO()
-    simplejson.dump({"traceEvents": ret},
+    json.dump({"traceEvents": ret},
                     gzip.GzipFile(fileobj=trace_gz, mode="w"))
     trace_gz_b64 = base64.encodestring(trace_gz.getvalue())
     with open(TRACE_HTML, "r") as f:
       trace = f.read()
       trace = trace.replace("SUBSTITUTE_TRACE_HERE", trace_gz_b64)
     return trace
+
+  @cherrypy.expose
+  def view_log(self, job_id, task_id, attempt, log):
+    task = self.results_store.fetch_task(job_id, task_id, attempt)
+    if task is None:
+      return "Could not find requested task"
+
+    if log == "stderr":
+      key = task['stderr_key']
+    elif log == "stdout":
+      key = task['stdout_key']
+    else:
+      return "Unknown log type"
+
+    url = self.results_store.generate_output_link(key)
+    return cgi.escape(urllib.urlopen(url).read(), quote=True)
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
@@ -71,7 +99,7 @@ class DistTestServer(object):
   @cherrypy.expose
   @cherrypy.tools.json_out()
   def submit_job(self, job_id, job_json):
-    job_desc = simplejson.loads(job_json)
+    job_desc = json.loads(job_json)
 
     tasks = []
     for i, task_desc in enumerate(job_desc['tasks']):
@@ -93,8 +121,12 @@ class DistTestServer(object):
     task = dist_test.Task.from_json(task_json)
     if task.attempt < task.max_retries:
       task.attempt += 1
-      self.results_store.register_task(task)
-      self.task_queue.submit_task(task)
+      self.results_store.register_tasks([task])
+      # Run retry tasks with a boosted priority. This prevents them from straggling
+      # if we've already started running another job.
+      retry_priority = 2**31 - (1000 * task.attempt)
+      retry_priority = max(retry_priority, 1000)
+      self.task_queue.submit_task(task, priority=retry_priority)
     return {"status": "SUCCESS"}
 
   def _sort_tasks_by_duration(self, tasks):
@@ -127,18 +159,37 @@ class DistTestServer(object):
   @cherrypy.expose
   @cherrypy.tools.json_out()
   def failed_tasks(self, job_id):
+    # Deprecated, use the "tasks" endpoint instead.
+    return self.tasks(job_id, status="failed")
+
+  @cherrypy.expose
+  @cherrypy.tools.json_out()
+  def tasks(self, job_id, status=None):
+    if status not in (None, "failed", "succeeded", "finished"):
+      return "Unknown status type"
+    # fetch all tasks and filter by status. By default (None) return all tasks.
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
-    ret = []
-    for t in tasks:
-      if t['status'] is not None and t['status'] != 0:
-        record = dict(task_id=t['task_id'],
-                      description=t['description'])
-        if t['stdout_abbrev']:
-          record['stdout_link'] = self.results_store.generate_output_link(t, "stdout")
-        if t['stderr_abbrev']:
-          record['stderr_link'] = self.results_store.generate_output_link(t, "stderr")
-        ret.append(record)
-    return ret
+    filtered = tasks
+    if status == "failed":
+      filtered = [t for t in tasks if t['status'] is not None and t['status'] != 0]
+    elif status == "succeeded":
+      filtered = [t for t in tasks if t['status'] is not None and t['status'] == 0]
+    elif status == "finished":
+      filtered = [t for t in tasks if t['status'] is not None]
+    # construct a record for each filtered task
+    records = []
+    for t in filtered:
+      record = dict(task_id=t['task_id'],
+                    attempt=t['attempt'],
+                    description=t['description'])
+      if t['stdout_key']:
+        record['stdout_link'] = self.results_store.generate_output_link(t['stdout_key'])
+      if t['stderr_key']:
+        record['stderr_link'] = self.results_store.generate_output_link(t['stderr_key'])
+      if t['artifact_archive_key']:
+        record['artifact_archive_link'] = self.results_store.generate_output_link(t['artifact_archive_key'])
+      records.append(record)
+    return records
 
   def _summarize_tasks(self, tasks, json_compatible=False):
     """Computes aggregate statistics on a set of tasks and groups tasks into groups based on task_id.
@@ -184,6 +235,7 @@ class DistTestServer(object):
       # If we succeeded after some failures, increment flaky count
       if succeeded and any(failed_tasks):
         result['flaky_groups'] += 1
+    result['finished_groups'] = result['failed_groups'] + result['succeeded_groups']
 
     # Determine job state: if it's finished, how long its been running
     finish_time = None
@@ -282,6 +334,11 @@ class DistTestServer(object):
     """)
     return template.render(job=job, job_summary=job_summary)
 
+  def _generate_view_link(self, task, output):
+    return "/view_log?job_id=%s&task_id=%s&attempt=%s&log=%s" % \
+        (urllib.quote(task["job_id"]), urllib.quote(task["task_id"]), urllib.quote(str(task["attempt"])), urllib.quote(output))
+
+
   def _render_tasks(self, tasks, job_summary, task_groups):
     # Calculate status of each task group
     task_to_group_status = defaultdict(dict)
@@ -293,10 +350,15 @@ class DistTestServer(object):
 
     for t in tasks:
       # stdout/stderr links
-      if t['stdout_abbrev']:
-        t['stdout_link'] = self.results_store.generate_output_link(t, "stdout")
-      if t['stderr_abbrev']:
-        t['stderr_link'] = self.results_store.generate_output_link(t, "stderr")
+      if t['stdout_key']:
+        t['stdout_link'] = self.results_store.generate_output_link(t['stdout_key'])
+        t['stdout_view_link'] = self._generate_view_link(t, "stdout")
+      if t['stderr_key']:
+        t['stderr_link'] = self.results_store.generate_output_link(t['stderr_key'])
+        t['stderr_view_link'] = self._generate_view_link(t, "stderr")
+      # artifact link
+      if t['artifact_archive_key']:
+        t['artifact_archive_link'] = self.results_store.generate_output_link(t['artifact_archive_key'])
       # Calculate the elapsed time
       if t['start_timestamp'] is not None and t['complete_timestamp'] is not None:
         delta = t['complete_timestamp'] - t['start_timestamp']
@@ -323,27 +385,6 @@ class DistTestServer(object):
       t['status_class'] = ' '.join(status)
 
     template = Template("""
-      <script>
-$(document).ready(function() {
-  function showOnly(clazz) {
-    $('#tasks tbody tr:not(.' + clazz + ')').hide();
-    $('#tasks tbody tr.' + clazz).show();
-    return false;
-  }
-  function showAll() {
-    $('#tasks tbody tr').show();
-    return false;
-  }
-
-  $('table.sortable').tablesorter();
-  $('#show-all').click(function() { showAll(); });
-  $('#show-running').click(function() { showOnly('task-running'); });
-  $('#show-successful').click(function() { showOnly('task-successful'); });
-  $('#show-failed').click(function() { showOnly('task-failed'); });
-  $('#show-timedout').click(function() { showOnly('task-timedout'); });
-  $('#show-flaky').click(function() { showOnly('task-flaky'); });
-} );
-</script>
     <br style="clear: both;"/>
     <div>
       Show:
@@ -364,13 +405,14 @@ $(document).ready(function() {
         <th>results</th>
         <th>stdout</th>
         <th>stderr</th>
+        <th>artifacts</th>
         <th>task</th>
         <th>attempt</th>
       </tr>
     </thead>
     <tbody>
       {% for task in tasks %}
-        <tr class="{{ task.status_class |e}}">
+        <tr class="{{ task.status_class |e }}">
           <td>{{ task.runtime | int |e }}</td>
           <td>{{ task.description |e }}</td>
           <td>{{ task.hostname |e }}</td>
@@ -378,12 +420,21 @@ $(document).ready(function() {
           <td>{{ task.output_archive_hash |e }}</td>
           <td>{{ task.stdout_abbrev |e }}
               {% if task.stdout_link %}
+              <br/>
+              <a class="view" href="#" viewlink="{{ task.stdout_view_link |e }}" viewheader="{{ task.description |e }}.{{ task.task_id |e }}.stdout">view</a>
               <a href="{{ task.stdout_link |e }}">download</a>
               {% endif %}
           </td>
           <td>{{ task.stderr_abbrev |e }}
               {% if task.stderr_link %}
+              <br/>
+              <a class="view" href="#" viewlink="{{ task.stderr_view_link |e }}" viewheader="{{ task.description |e }}.{{ task.task_id |e }}.stderr">view</a>
               <a href="{{ task.stderr_link |e }}">download</a>
+              {% endif %}
+          </td>
+          <td>
+              {% if task.artifact_archive_link %}
+              <a href="{{ task.artifact_archive_link |e }}">download</a>
               {% endif %}
           </td>
           <td>{{ task.task_id |e }}</td>
@@ -413,10 +464,10 @@ $(document).ready(function() {
           margin-bottom: 1em;
         }
         .progress-bar .filler {
-           margin: 0px;
-           height: 100%;
-           border: 0;
-           float:left;
+          margin: 0px;
+          height: 100%;
+          border: 0;
+          float:left;
         }
         .filler.green { background-color: #0f0; }
         .task-running { background-color: #ffa; }
@@ -424,15 +475,75 @@ $(document).ready(function() {
         .task-failed { background-color: #faa; }
         .task-flaky { background-color: #fc9; }
         .filler.red { background-color: #f00; }
+
+        /* Required for scrollbar on modal window */
+        .modal-dialog { overflow-y: initial !important; }
+        .modal-body {
+          height: 100%;
+          overflow-y: auto;
+          font-family: monospace;
+          white-space:pre;
+        }
+
       </style>
     </head>
     <body>
-      <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
-      <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
-      <script src="//cdnjs.cloudflare.com/ajax/libs/jquery.tablesorter/2.18.2/js/jquery.tablesorter.min.js"></script>
+
+      <!-- Modal -->
+      <div id="logModal" class="modal fade" role="dialog">
+        <div class="modal-dialog modal-lg">
+
+          <!-- Modal content-->
+          <div class="modal-content">
+            <div class="modal-header">
+              <button type="button" class="close" data-dismiss="modal">&times;</button>
+              <h4 class="modal-title">Modal Header</h4>
+            </div>
+            <div class="modal-body">
+              <p>Some text in the modal.</p>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
       <div class="container-fluid">
       {{ body }}
       </div>
+      <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+      <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+      <script src="//cdnjs.cloudflare.com/ajax/libs/jquery.tablesorter/2.18.2/js/jquery.tablesorter.min.js"></script>
+      <script>
+        $(document).ready(function() {
+          function showOnly(clazz) {
+            $('#tasks tbody tr:not(.' + clazz + ')').hide();
+            $('#tasks tbody tr.' + clazz).show();
+            return false;
+          }
+          function showAll() {
+            $('#tasks tbody tr').show();
+            return false;
+          }
+
+          $('table.sortable').tablesorter();
+          $('#show-all').click(function() { showAll(); });
+          $('#show-running').click(function() { showOnly('task-running'); });
+          $('#show-successful').click(function() { showOnly('task-successful'); });
+          $('#show-failed').click(function() { showOnly('task-failed'); });
+          $('#show-timedout').click(function() { showOnly('task-timedout'); });
+          $('#show-flaky').click(function() { showOnly('task-flaky'); });
+
+          // Setup the lightbox for the "view" logs links
+          $( "a.view" ).click(function() {
+              $('#logModal .modal-title').text($(this).attr("viewheader"));
+              $('#logModal .modal-body').load($(this).attr("viewlink"), function() {
+                $('#logModal').modal();
+              });
+          });
+        });
+      </script>
     </body>
     </html>
     """)
@@ -440,15 +551,18 @@ $(document).ready(function() {
 
 
 if __name__ == "__main__":
-  logging.basicConfig(level=logging.INFO)
-  config = dist_test.Config()
-  logging.info("Writing access logs to %s", config.ACCESS_LOG)
-  logging.info("Writing error logs to %s", config.ERROR_LOG)
+  config = Config()
+  LOG = logging.getLogger('dist_test.server')
+  dist_test.configure_logger(LOG, config.SERVER_LOG)
+
+  LOG.info("Writing access logs to %s", config.SERVER_ACCESS_LOG)
+  LOG.info("Writing error logs to %s", config.SERVER_ERROR_LOG)
   cherrypy.config.update({
     'server.socket_host': '0.0.0.0',
     'server.socket_port': 8081,
-    'log.access_file': config.ACCESS_LOG,
-    'log.error_file': config.ERROR_LOG,
+    'log.access_file': config.SERVER_ACCESS_LOG,
+    'log.error_file': config.SERVER_ERROR_LOG,
   })
+  LOG.info("Starting server")
   cherrypy.quickstart(DistTestServer(config))
 

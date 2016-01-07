@@ -1,29 +1,41 @@
 #!/usr/bin/env python
 
+from __future__ import with_statement
 import beanstalkc
 import boto
-import dist_test
+import cStringIO
 import errno
 import fcntl
+import glob2
 import logging
 import os
 import urllib
 import urllib2
 import re
 import select
+import shutil
+import sys
 try:
   import simplejson as json
 except:
   import json
 import subprocess
 import time
+import zipfile
+
+from config import Config
+import dist_test
 
 RUN_ISOLATED_OUT_RE = re.compile(r'\[run_isolated_out_hack\](.+?)\[/run_isolated_out_hack\]',
                                  re.DOTALL)
+LOG = None
 
 class Slave(object):
-  def __init__(self):
-    self.config = dist_test.Config()
+
+  def __init__(self, config):
+    self.config = config
+    self.config.ensure_isolate_configured()
+    self.config.ensure_dist_test_configured()
     self.task_queue = dist_test.TaskQueue(self.config)
     self.results_store = dist_test.ResultsStore(self.config)
     self.cache_dir = self._get_exclusive_cache_dir()
@@ -38,12 +50,12 @@ class Slave(object):
         fcntl.lockf(self._lockfile.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
       except IOError, e:
         if e.errno in (errno.EACCES, errno.EAGAIN):
-          logging.info("Another slave already using cache dir %s", dir)
+          LOG.info("Another slave already using cache dir %s", dir)
           self._lockfile.close()
           continue
         raise
       # Succeeded in locking
-      logging.info("Acquired lock on cache dir %s", dir)
+      LOG.info("Acquired lock on cache dir %s", dir)
       return dir
     raise Exception("Unable to lock any cache dir %s.<int>" %
         self.config.ISOLATE_CACHE_DIR)
@@ -53,16 +65,90 @@ class Slave(object):
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
+  def parse_test_dir(self, stderr):
+    # Find the test_dir for this invocation of run_isolated.py
+    # FIXME: this is done by parsing the stderr of invoking run_isolated.py, which is
+    # far from bullet-proof.
+    #
+    # Example:
+    # WARNING   3420    run_isolated(197): Deliberately leaking /tmp/run_tha_test1r2oKG for later examination
+    test_dir = None
+    pattern = re.compile(r"WARNING[ ]+[\d]+[ ]+run_isolated.*: Deliberately leaking (.*) for later examination")
+    for line in stderr.splitlines():
+      m = pattern.match(line)
+      if m is not None:
+        test_dir = m.group(1)
+        # Do not break early, we want the last stderr line that matches
+
+    if test_dir is None:
+      LOG.warn("No run_tha_test directory found!")
+      return None
+    if not os.path.exists(test_dir):
+      LOG.warn("Parsed run_tha_test directory %s does not actually exist!" % test_dir)
+      return None
+
+    return test_dir
+
+  def make_archive(self, task, test_dir):
+    # Return early if no test_dir is specified
+    if test_dir is None:
+      return None
+    # Return early if there are no globs specified
+    if task.task.artifact_archive_globs is None or len(task.task.artifact_archive_globs) == 0:
+      return None
+    all_matched = set()
+    total_size = 0
+    for g in task.task.artifact_archive_globs:
+      try:
+          matched = glob2.iglob(test_dir + "/" + g)
+          for m in matched:
+            canonical = os.path.realpath(m)
+            if not canonical.startswith(test_dir):
+              LOG.warn("Glob %s matched file outside of test_dir, skipping: %s" % (g, canonical))
+              continue
+            total_size += os.stat(canonical).st_size
+            all_matched.add(canonical)
+      except Exception as e:
+        LOG.warn("Error while globbing %s: %s" % (g, e))
+
+    if len(all_matched) == 0:
+      return None
+    max_size = 200*1024*1024 # 200MB max uncompressed size
+    if total_size > max_size:
+      # If size exceeds the maximum size, upload a zip with an error message instead
+      LOG.info("Task %s generated too many bytes of matched artifacts (%d > %d)," \
+               + "uploading archive with error message instead.",
+              task.task.get_id(), total_size, max_size)
+      archive_buffer = cStringIO.StringIO()
+      with zipfile.ZipFile(archive_buffer, "w") as myzip:
+        myzip.writestr("_ARCHIVE_TOO_BIG_",
+                       "Size of matched uncompressed test artifacts exceeded maximum size" \
+                       + "(%d bytes > %d bytes)!" % (total_size, max_size))
+      return archive_buffer
+
+    # Write out the archive
+    archive_buffer = cStringIO.StringIO()
+    with zipfile.ZipFile(archive_buffer, "w") as myzip:
+      for m in all_matched:
+        arcname = os.path.relpath(m, test_dir)
+        while arcname.startswith("/"):
+          arcname = arcname[1:]
+        myzip.write(m, arcname)
+
+    return archive_buffer
+
+
   def run_task(self, task, bs_job):
     cmd = [os.path.join(self.config.ISOLATE_HOME, "run_isolated.py"),
            "--isolate-server=%s" % self.config.ISOLATE_SERVER,
            "--cache=%s" % self.cache_dir,
            "--verbose",
+           "--leak-temp",
            "--hash", task.task.isolate_hash]
     if not self.results_store.mark_task_running(task.task):
-      logging.info("Task %s canceled", task.task.description)
+      LOG.info("Task %s canceled", task.task.description)
       return
-    logging.info("Running command: %s", repr(cmd))
+    LOG.info("Running command: %s", repr(cmd))
     p = subprocess.Popen(
       cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     pipes = [p.stdout, p.stderr]
@@ -83,20 +169,21 @@ class Slave(object):
         x = p.stdout.read(1024 * 1024)
         stdout += x
       if p.stderr in rlist:
-        stderr += p.stderr.read(1024 * 1024)
+        x = p.stderr.read(1024 * 1024)
+        stderr += x
       if xlist or p.poll() is not None:
         break
       now = time.time()
       if timeout > 0 and now > kill_term_time:
-        logging.info("Task timed out: " + task.task.description)
+        LOG.info("Task timed out: " + task.task.description)
         stderr += "\n------\nKilling task after %d seconds" % timeout
         p.terminate()
       if timeout > 0 and now > kill_kill_time:
-        logging.info("Task did not exit after SIGTERM. Sending SIGKILL")
+        LOG.info("Task did not exit after SIGTERM. Sending SIGKILL")
         p.kill()
 
       if time.time() - last_touch > 10:
-        logging.info("Still running: " + task.task.description)
+        LOG.info("Still running: " + task.task.description)
         try:
           bs_job.touch()
         except:
@@ -111,10 +198,15 @@ class Slave(object):
       isolated_out = json.loads(m.group(1))
       output_archive_hash = isolated_out['hash']
 
-    # Don't upload results from successful builds
+    test_dir = self.parse_test_dir(stderr)
+    artifact_archive = None
+
+    # Don't upload logs from successful builds
     if rc == 0:
       stdout = None
       stderr = None
+
+    artifact_archive = self.make_archive(task, test_dir)
 
     end_time = time.time()
     duration_secs = end_time - start_time
@@ -124,7 +216,15 @@ class Slave(object):
                                           result_code=rc,
                                           stdout=stdout,
                                           stderr=stderr,
+                                          artifact_archive=artifact_archive,
                                           duration_secs=duration_secs)
+
+    # Do cleanup of temp files
+    if test_dir is not None:
+      LOG.info("Removing test directory %s" % test_dir)
+      shutil.rmtree(test_dir)
+    if artifact_archive is not None:
+      artifact_archive.close()
 
     # Retry if non-zero exit code and have retries remaining
     if rc != 0 and task.task.attempt < task.task.max_retries:
@@ -143,21 +243,27 @@ class Slave(object):
       try:
         task = self.task_queue.reserve_task()
       except Exception, e:
-        logging.warning("Failed to reserve job: %s" % str(e))
+        LOG.warning("Failed to reserve job: %s" % str(e))
         time.sleep(1)
         continue
-      logging.info("got task: %s", task.task.to_json())
+      LOG.info("got task: %s", task.task.to_json())
       self.run_task(task, task.bs_elem)
       try:
         task.bs_elem.delete()
       except Exception, e:
-        logging.warning("Failed to delete job: %s" % str(e))
+        LOG.warning("Failed to delete job: %s" % str(e))
         continue
 
 
 def main():
-  logging.basicConfig(level=logging.INFO)
-  Slave().run()
+  global LOG
+
+  config = Config()
+  LOG = logging.getLogger('dist_test.slave')
+  dist_test.configure_logger(LOG, config.SLAVE_LOG)
+
+  LOG.info("Starting slave")
+  Slave(config).run()
 
 if __name__ == "__main__":
   main()
