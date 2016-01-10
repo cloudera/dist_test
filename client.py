@@ -161,6 +161,8 @@ def submit(argv):
                help="Whether to download logs")
   p.add_option("-a", "--artifacts", dest="artifacts", action="store_true", default=False,
                help="Whether to download artifacts")
+  p.add_option("--no-wait", dest="no_wait", action="store_true", default=False,
+               help="Exit after submitting the job, rather than waiting for completion")
   options, args = p.parse_args()
 
   if len(args) != 1:
@@ -168,6 +170,8 @@ def submit(argv):
     sys.exit(1)
 
   job_id = submit_job_json(options.name, file(args[0]).read())
+  if options.no_wait:
+    sys.exit(0)
   retcode = do_watch_results(job_id)
   if options.artifacts:
     _fetch(job_id, options.artifacts, options.logs, options.out_dir)
