@@ -12,17 +12,19 @@
 # disttest is where most of the interesting implementation lives.
 # grind is mainly argument parsing and configuration management.
 
-import os
-import json
-import sys
-import shlex, subprocess
 import argparse
-import logging
 import ConfigParser
-import tempfile
+import json
+import logging
+import os
+import shlex
 import shutil
+import subprocess
+import sys
+import tempfile
 
 sys.path = [os.path.join(os.path.realpath(os.path.dirname(__file__)), "../python")] + sys.path
+from disttest import merge_xunit
 from disttest import isolate
 from disttest import util
 
@@ -327,22 +329,29 @@ class TestRunner:
         tasks_file = os.path.join(self.output_dir, "run.json")
         self.isolate_hashes_to_tasks(hashes_file, tasks_file)
 
-        artifacts_flag = ""
+        artifacts_flags = ""
         if self.args.artifacts:
-            artifacts_flag = "--artifacts"
+            artifacts_flags = shlex.split("--artifacts --output-dir grind-test-results")
 
         if self.args.dry_run:
             logging.info("Dry run, skipping test submission")
         else:
-            # Call the dist_test client
-            cmd = "%s submit %s --name %s %s" % \
-                    (self.config.dist_test_client_path, \
-                     artifacts_flag, \
-                     os.path.basename(self.project_dir), \
-                     tasks_file)
-            logger.info("Calling %s", cmd)
-            p = subprocess.Popen(shlex.split(cmd), env=isolate_env)
+            # Call the dist_test client submit
+            cmd = [self.config.dist_test_client_path, "submit"] + \
+                   artifacts_flags + \
+                   ["--name", os.path.basename(self.project_dir), tasks_file]
+            logger.info("Calling %s", " ".join(cmd))
+            p = subprocess.Popen(cmd, env=isolate_env)
             p.wait()
+            # If we downloaded artifacts, then merge the results
+            if self.args.artifacts:
+                in_files = []
+                for root, dirs, files in os.walk("grind-test-results"):
+                    for f in files:
+                        if f.endswith(".xml"):
+                            in_files.append(os.path.join(root, f))
+                merge_xunit.merge_xunit(in_files, "test_results.xml")
+            # Bubble up the return code from dist_test
             if p.returncode != 0:
                 if p.returncode == 88:
                     logger.warn("Test run failed!")
