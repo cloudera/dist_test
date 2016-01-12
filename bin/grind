@@ -188,11 +188,11 @@ class CacheRunner:
         else:
             project_root = os.getcwd()
             manifest = cache.list(project_root)
-            cache_size = util.sizeof_fmt(util.du(cache.cache_dir + project_root))
             if manifest is None:
                 sys.stderr.write("No cached manifest found for %s\n" % project_root)
                 sys.exit(2)
             if self.args.clear:
+                cache_size = util.sizeof_fmt(util.du(cache.cache_dir + project_root))
                 msg = "Are you sure you want to clear dependency set for %s (%s)?"\
                         % (project_root, cache_size)
                 util.prompt_confirm_or_exit(msg)
@@ -329,7 +329,7 @@ class TestRunner:
         tasks_file = os.path.join(self.output_dir, "run.json")
         self.isolate_hashes_to_tasks(hashes_file, tasks_file)
 
-        artifacts_flags = ""
+        artifacts_flags = []
         if self.args.artifacts:
             artifacts_flags = shlex.split("--artifacts --output-dir grind-test-results")
 
