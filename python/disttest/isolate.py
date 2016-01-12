@@ -79,7 +79,7 @@ run mvn -version
 run which java
 run java -version
 
-run mvn -Dmaven.repo.local=$(pwd)/.m2/repository surefire:test --file $1 -Dtest=$2 2>&1
+run mvn --settings $(pwd)/settings.xml -Dmaven.repo.local=$(pwd)/.m2/repository -Dmaven.artifact.threads=100 surefire:test --file $1 -Dtest=$2 2>&1
 """
 
     __COMMAND = """%s <(POM) <(TESTCLASS)""" % __RUN_SCRIPT_NAME

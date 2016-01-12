@@ -325,15 +325,16 @@ class Packager:
             env_mvn = env_mvn[:-1]
 
         cached_m2_repo = os.path.join(self.__cached_project_root, Packager._MAVEN_REL_ROOT)
+        settings_xml = os.path.join(self.__cached_project_root, "settings.xml")
 
         # copy-dependencies
-        cmd = """%s -q dependency:copy-dependencies -Dmdep.useRepositoryLayout=true -Dmdep.copyPom -DoutputDirectory=%s"""
-        cmd = cmd % (env_mvn, cached_m2_repo)
+        cmd = """%s --settings %s -q dependency:copy-dependencies -Dmdep.useRepositoryLayout=true -Dmdep.copyPom -DoutputDirectory=%s"""
+        cmd = cmd % (env_mvn, settings_xml, cached_m2_repo)
         Packager.__shell(cmd, self.__project_root)
 
         # mvn test without running tests
-        cmd = """%s -q -Dmaven.repo.local=%s surefire:test -DskipTests"""
-        cmd = cmd % (env_mvn, cached_m2_repo)
+        cmd = """%s --settings %s -q -Dmaven.repo.local=%s surefire:test -DskipTests"""
+        cmd = cmd % (env_mvn, settings_xml, cached_m2_repo)
         Packager.__shell(cmd, self.__project_root)
 
         # TODO: add support for specifying additional dependencies not caught by above
