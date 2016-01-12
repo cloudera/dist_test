@@ -350,7 +350,7 @@ class TestRunner:
                     for f in files:
                         if f.endswith(".xml"):
                             in_files.append(os.path.join(root, f))
-                merge_xunit.merge_xunit(in_files, "test_results.xml")
+                merge_xunit.merge_xunit(in_files, "test_results.xml", ignore_flaky=True, quiet=True)
             # Bubble up the return code from dist_test
             if p.returncode != 0:
                 if p.returncode == 88:
