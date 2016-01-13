@@ -142,7 +142,7 @@ class Slave(object):
 
     # Write out the archive
     archive_buffer = cStringIO.StringIO()
-    with zipfile.ZipFile(archive_buffer, "w") as myzip:
+    with zipfile.ZipFile(archive_buffer, "w", zipfile.ZIP_DEFLATED) as myzip:
       for m in all_matched:
         arcname = os.path.relpath(m, test_dir)
         while arcname.startswith("/"):
