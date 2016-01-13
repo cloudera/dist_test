@@ -76,6 +76,7 @@ def print_status(start_time, previous_result, result, first=False, retcode=None)
     sys.stdout.write(ontty(YELLOW) + p + ontty(RESET))
 
   sys.stdout.write("\n")
+  sys.stdout.flush()
 
 
 def get_return_code(result):
