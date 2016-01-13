@@ -4,6 +4,7 @@ from __future__ import with_statement
 import getpass
 import logging
 import multiprocessing
+from multiprocessing.pool import ThreadPool
 import optparse
 import os
 import sys
@@ -305,13 +306,20 @@ def _download(link, path):
         raise
 
 def _parallel_download(links, paths):
-  pool = multiprocessing.Pool(processes=int(multiprocessing.cpu_count()*1.5))
+  pool = ThreadPool(processes=int(multiprocessing.cpu_count()*1.5))
   results = []
   for link, path in zip(links, paths):
     results.append(pool.apply_async(_download, (link, path)))
   for r in results:
     try:
-      r.get()
+      while True:
+        # This goofy loop with a timeout ensures that we handle KeyboardInterrupt.
+        # Otherwise, KeyboardInterrupt won't get caught.
+        try:
+          r.get(timeout=1)
+          break
+        except multiprocessing.TimeoutError:
+          continue
     except Exception as e:
       raise
 
