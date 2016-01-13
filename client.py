@@ -22,7 +22,7 @@ import config
 config = config.Config()
 config.ensure_dist_test_configured()
 TEST_MASTER = config.DIST_TEST_MASTER
-
+LAST_JOB_PATH = config.DIST_TEST_JOB_PATH
 RED = "\x1b[31m"
 YELLOW = "\x1b[33m"
 GREEN = "\x1b[32m"
@@ -115,12 +115,12 @@ def do_watch_results(job_id):
     time.sleep(0.5)
 
 def save_last_job_id(job_id):
-  with file(os.path.expanduser("~/.dist-test-last-job"), "w") as f:
+  with file(LAST_JOB_PATH, "w") as f:
     f.write(job_id)
 
 def load_last_job_id():
   try:
-    with file(os.path.expanduser("~/.dist-test-last-job"), "r") as f:
+    with file(LAST_JOB_PATH, "r") as f:
       return f.read()
   except:
     return None

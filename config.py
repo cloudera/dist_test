@@ -25,6 +25,7 @@ class Config(object):
 
   # Dist test settings
   DIST_TEST_MASTER_CONFIG = ('dist_test', 'master', "DIST_TEST_MASTER")
+  DIST_TEST_JOB_PATH_CONFIG = ('dist_test', 'job_path', 'DIST_TEST_JOB_PATH')
 
   def __init__(self, path=None):
     if path is None:
@@ -62,6 +63,9 @@ class Config(object):
     if not self.config.has_section('dist_test'):
       self.config.add_section('dist_test')
     self.DIST_TEST_MASTER = self._get_with_env_override(*self.DIST_TEST_MASTER_CONFIG)
+    self.DIST_TEST_JOB_PATH = self._get_with_env_override(*self.DIST_TEST_JOB_PATH_CONFIG)
+    if self.DIST_TEST_JOB_PATH is None:
+      self.DIST_TEST_JOB_PATH = os.path.expanduser("~/.dist-test-last-job")
 
     self.log_dir = self.config.get('dist_test', 'log_dir')
     # Make the log directory if it doesn't exist
