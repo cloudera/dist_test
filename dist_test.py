@@ -70,19 +70,24 @@ class TaskQueue(object):
   def __init__(self, config):
     config.ensure_beanstalk_configured()
     self.bs = beanstalkc.Connection(config.BEANSTALK_HOST)
+    # beanstalkc is not thread-safe
+    self.lock = threading.Lock()
 
   def submit_task(self, task, priority=2147483648):
     """Submit a beanstalk task, with optional non-negative integer priority.
     Lower priority values are reserved first."""
     logging.info("Submitting task %s" % task.job_id)
-    self.bs.put(task.to_json(), priority=priority)
+    with self.lock:
+      self.bs.put(task.to_json(), priority=priority)
 
   def reserve_task(self):
-    bs_elem = self.bs.reserve()
+    with self.lock:
+      bs_elem = self.bs.reserve()
     return ReservedTask(bs_elem)
 
   def stats(self):
-    return self.bs.stats_tube("default")
+    with self.lock:
+      return self.bs.stats_tube("default")
 
 class ResultsStore(object):
   def __init__(self, config):

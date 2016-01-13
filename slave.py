@@ -50,6 +50,7 @@ class Slave(object):
     self.results_store = dist_test.ResultsStore(self.config)
     self.cache_dir = self._get_exclusive_cache_dir()
     self.metrics_collector = metrics.MetricsCollector()
+    self.metrics_lock = threading.Lock()
     self.cur_task = None
     self.is_busy = False
 
@@ -253,10 +254,17 @@ class Slave(object):
       sys.err.println("Unable to submit retry task: %s" % repr(result))
 
   def submit_load_metric(self, load):
+    if not self.metrics_lock.acquire(False):
+      # if we can't get the lock, just bail -- we're already
+      # submitting the current load from another thread and we can't
+      # submit two metrics in short succession anyway
+      return
     try:
       self.metrics_collector.submit(load)
     except Exception, e:
       logging.warning("Failed to submit load metric: %s" % str(e))
+    finally:
+      self.metrics_lock.release()
 
   def run_metrics_thread(self):
     ring_buffer = [False for x in range(NUM_SECONDS_LOAD_AVERAGE)]

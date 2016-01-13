@@ -40,7 +40,11 @@ class MetricsCollector(object):
         scope="https://www.googleapis.com/auth/monitoring")
     http = credentials.authorize(httplib2.Http())
     self.service = build(serviceName="cloudmonitoring", version="v2beta2", http=http)
-    self.create_metric()
+    try:
+      self.create_metric()
+    except Exception, e:
+      logging.warning("Unable to create custom metric", e)
+
     
   def create_metric(self):
     """Create metric descriptor for the custom metric and send it to the API."""
