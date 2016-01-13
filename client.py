@@ -176,7 +176,7 @@ def submit(argv):
     sys.exit(0)
   retcode = do_watch_results(job_id)
   if options.artifacts:
-    _fetch(job_id, options.artifacts, options.logs, options.out_dir)
+    _fetch(job_id, **vars(options))
   sys.exit(retcode)
 
 def get_job_id_from_args(command, args):
@@ -215,6 +215,8 @@ def fetch(argv):
                help="Whether to download logs", metavar="PATH")
   p.add_option("-a", "--artifacts", dest="artifacts", action="store_true", default=False,
                help="Whether to download artifacts", metavar="PATH")
+  p.add_option("-f", "--failed-only", dest="failed_only", action="store_true",
+               help="Download artifacts/logs only from failed tasks.")
 
   options, args = p.parse_args()
 
@@ -230,11 +232,12 @@ def fetch(argv):
   if not options.logs and not options.artifacts:
     p.error("Need to specify either --logs or --artifacts")
 
-  _fetch(job_id, options.artifacts, options.logs, options.out_dir)
+  _fetch(job_id, **vars(options))
 
-def _fetch(job_id, artifacts, logs, out_dir):
+def _fetch(job_id, out_dir, artifacts=False, logs=False, failed_only=False):
   # Fetch the finished tasks for the job
-  tasks = fetch_tasks(job_id, status="finished")
+  status = failed_only and 'failed' or 'finished'
+  tasks = fetch_tasks(job_id, status=status)
   if len(tasks) == 0:
     LOG.info("No tasks in specified job, or job does not exist")
     return
