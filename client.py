@@ -4,6 +4,7 @@ from __future__ import with_statement
 import getpass
 import logging
 import multiprocessing
+from multiprocessing.pool import ThreadPool
 import optparse
 import os
 import sys
@@ -22,7 +23,7 @@ import config
 config = config.Config()
 config.ensure_dist_test_configured()
 TEST_MASTER = config.DIST_TEST_MASTER
-
+LAST_JOB_PATH = config.DIST_TEST_JOB_PATH
 RED = "\x1b[31m"
 YELLOW = "\x1b[33m"
 GREEN = "\x1b[32m"
@@ -76,6 +77,7 @@ def print_status(start_time, previous_result, result, first=False, retcode=None)
     sys.stdout.write(ontty(YELLOW) + p + ontty(RESET))
 
   sys.stdout.write("\n")
+  sys.stdout.flush()
 
 
 def get_return_code(result):
@@ -115,12 +117,12 @@ def do_watch_results(job_id):
     time.sleep(0.5)
 
 def save_last_job_id(job_id):
-  with file(os.path.expanduser("~/.dist-test-last-job"), "w") as f:
+  with file(LAST_JOB_PATH, "w") as f:
     f.write(job_id)
 
 def load_last_job_id():
   try:
-    with file(os.path.expanduser("~/.dist-test-last-job"), "r") as f:
+    with file(LAST_JOB_PATH, "r") as f:
       return f.read()
   except:
     return None
@@ -161,6 +163,8 @@ def submit(argv):
                help="Whether to download logs")
   p.add_option("-a", "--artifacts", dest="artifacts", action="store_true", default=False,
                help="Whether to download artifacts")
+  p.add_option("--no-wait", dest="no_wait", action="store_true", default=False,
+               help="Exit after submitting the job, rather than waiting for completion")
   options, args = p.parse_args()
 
   if len(args) != 1:
@@ -168,9 +172,11 @@ def submit(argv):
     sys.exit(1)
 
   job_id = submit_job_json(options.name, file(args[0]).read())
+  if options.no_wait:
+    sys.exit(0)
   retcode = do_watch_results(job_id)
   if options.artifacts:
-    _fetch(job_id, options.artifacts, options.logs, options.out_dir)
+    _fetch(job_id, **vars(options))
   sys.exit(retcode)
 
 def get_job_id_from_args(command, args):
@@ -209,6 +215,8 @@ def fetch(argv):
                help="Whether to download logs", metavar="PATH")
   p.add_option("-a", "--artifacts", dest="artifacts", action="store_true", default=False,
                help="Whether to download artifacts", metavar="PATH")
+  p.add_option("-f", "--failed-only", dest="failed_only", action="store_true",
+               help="Download artifacts/logs only from failed tasks.")
 
   options, args = p.parse_args()
 
@@ -224,11 +232,12 @@ def fetch(argv):
   if not options.logs and not options.artifacts:
     p.error("Need to specify either --logs or --artifacts")
 
-  _fetch(job_id, options.artifacts, options.logs, options.out_dir)
+  _fetch(job_id, **vars(options))
 
-def _fetch(job_id, artifacts, logs, out_dir):
+def _fetch(job_id, out_dir, artifacts=False, logs=False, failed_only=False):
   # Fetch the finished tasks for the job
-  tasks = fetch_tasks(job_id, status="finished")
+  status = failed_only and 'failed' or 'finished'
+  tasks = fetch_tasks(job_id, status=status)
   if len(tasks) == 0:
     LOG.info("No tasks in specified job, or job does not exist")
     return
@@ -300,13 +309,20 @@ def _download(link, path):
         raise
 
 def _parallel_download(links, paths):
-  pool = multiprocessing.Pool(processes=int(multiprocessing.cpu_count()*1.5))
+  pool = ThreadPool(processes=int(multiprocessing.cpu_count()*1.5))
   results = []
   for link, path in zip(links, paths):
     results.append(pool.apply_async(_download, (link, path)))
   for r in results:
     try:
-      r.get()
+      while True:
+        # This goofy loop with a timeout ensures that we handle KeyboardInterrupt.
+        # Otherwise, KeyboardInterrupt won't get caught.
+        try:
+          r.get(timeout=1)
+          break
+        except multiprocessing.TimeoutError:
+          continue
     except Exception as e:
       raise
 
