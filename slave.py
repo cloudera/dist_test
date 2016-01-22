@@ -200,8 +200,9 @@ class Slave(object):
         LOG.info("Still running: " + task.task.description)
         self.submit_load_metric(1)
         try:
-          self.bs_elem.touch()
+          task.bs_elem.touch()
         except:
+          LOG.info("Could not touch beanstalk queue elem", exc_info=True)
           pass
         last_touch = time.time()
 
