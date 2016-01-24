@@ -13,6 +13,7 @@ Dependencies
 * Luci, which is an Isolate compatible rewrite in Go (much faster than the original Python implementation). Follow the README for directions as to installing Luci. If you haven't installed  a Go program from source before, this can be involved.
 
         https://github.com/luci/luci-go
+Note that luci-go is only compilable using GO 1.4. Compiling with GO 1.5 will result in internal import violation problem. See details at https://docs.google.com/document/d/1e8kOo3r51b2BWtTs_1uADIA5djfXhPT36s6eHVRIvaU/edit.
 
 * dist_test, which is has a client for submitting to our internal distributed test infrastructure:
 
