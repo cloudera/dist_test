@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 
 def du(path):
@@ -33,3 +34,15 @@ def prompt_confirm_or_exit(msg):
     if not prompt_confirmation(msg):
         print "Aborted"
         sys.exit(1)
+
+def check_output(*args, **kwargs):
+    """Workaround for Python 2.6 not having subprocess.check_output"""
+    if "check_output" in dir(subprocess):
+        return subprocess.check_output(*args, **kwargs)
+
+    p = subprocess.Popen(stdout=subprocess.PIPE, *args, **kwargs)
+    stdout, _ = p.communicate()
+    ret = p.poll()
+    if ret:
+        raise Exception("Command %s failed." % (repr( (args, kwargs) )))
+    return stdout

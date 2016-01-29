@@ -96,15 +96,15 @@ class Manifest:
         if retcode != 0:
             raise Exception("Directory %s is not a git repository" % project_root)
 
-        grind_git_hash = subprocess.check_output("git show-ref --head -s HEAD", shell=True, cwd=os.path.dirname(__file__))
+        grind_git_hash = util.check_output("git show-ref --head -s HEAD", shell=True, cwd=os.path.dirname(__file__))
         if grind_git_hash.endswith("\n"):
             grind_git_hash = grind_git_hash[:-1]
-        git_hash = subprocess.check_output("git show-ref --head -s HEAD", shell=True, cwd=project_root)
+        git_hash = util.check_output("git show-ref --head -s HEAD", shell=True, cwd=project_root)
         if git_hash.endswith("\n"):
             git_hash = git_hash[:-1]
         git_branch = "(no branch)"
         try:
-            git_branch = subprocess.check_output("git symbolic-ref HEAD", shell=True, cwd=project_root)
+            git_branch = util.check_output("git symbolic-ref HEAD", shell=True, cwd=project_root)
         except:
             # Ignore an error here, can happen if we're on a detached HEAD
             pass
@@ -329,7 +329,7 @@ class Packager:
         # Use skeleton environment Maven to copy dependencies into output dir
         cmd = ". %s; which mvn" % os.path.join(self.__cached_project_root, "environment.source")
         logger.info("Detecting environment mvn via `%s`", cmd)
-        env_mvn = subprocess.check_output(cmd, shell=True, cwd=self.__cached_project_root)
+        env_mvn = util.check_output(cmd, shell=True, cwd=self.__cached_project_root)
         if env_mvn.endswith("\n"):
             env_mvn = env_mvn[:-1]
 
