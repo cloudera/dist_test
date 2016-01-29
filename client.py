@@ -234,7 +234,7 @@ def fetch(argv):
 
   _fetch(job_id, **vars(options))
 
-def _fetch(job_id, out_dir, artifacts=False, logs=False, failed_only=False):
+def _fetch(job_id, out_dir, artifacts=False, logs=False, failed_only=False, **kwargs):
   # Fetch the finished tasks for the job
   status = failed_only and 'failed' or 'finished'
   tasks = fetch_tasks(job_id, status=status)
