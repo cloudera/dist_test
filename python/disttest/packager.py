@@ -50,7 +50,8 @@ class Manifest:
 
     _FILENAME = ".grind_manifest"
     """Identifying information about a git project."""
-    def __init__(self, project_root, git_branch, git_hash, timestamp, extra_deps_checksum):
+    def __init__(self, grind_git_hash, project_root, git_branch, git_hash, timestamp, extra_deps_checksum):
+        self.grind_git_hash = grind_git_hash
         self.project_root = project_root
         self.git_hash = git_hash
         self.git_branch = git_branch
@@ -63,14 +64,15 @@ class Manifest:
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
-            for attr in ["project_root", "git_branch", "extra_deps_checksum"]:
+            for attr in ["project_root", "git_branch", "extra_deps_checksum", "grind_git_hash"]:
                 for obj in [self, other]:
                     if not hasattr(obj, attr):
                         logger.info("Cached manifest is missing required attributes, stale.")
                         return False
             return self.project_root == other.project_root and \
                     self.git_branch == other.git_branch and \
-                    self.extra_deps_checksum == other.extra_deps_checksum
+                    self.extra_deps_checksum == other.extra_deps_checksum and \
+                    self.grind_git_hash == other.grind_git_hash
         else:
             return False
 
@@ -94,18 +96,25 @@ class Manifest:
         if retcode != 0:
             raise Exception("Directory %s is not a git repository" % project_root)
 
+        grind_git_hash = subprocess.check_output("git show-ref --head -s HEAD", shell=True, cwd=os.path.dirname(__file__))
+        if grind_git_hash.endswith("\n"):
+            grind_git_hash = grind_git_hash[:-1]
         git_hash = subprocess.check_output("git show-ref --head -s HEAD", shell=True, cwd=project_root)
         if git_hash.endswith("\n"):
             git_hash = git_hash[:-1]
-        git_branch = subprocess.check_output("git symbolic-ref HEAD", shell=True, cwd=project_root)
-        # Trim newlines from the end
+        git_branch = "(no branch)"
+        try:
+            git_branch = subprocess.check_output("git symbolic-ref HEAD", shell=True, cwd=project_root)
+        except:
+            # Ignore an error here, can happen if we're on a detached HEAD
+            pass
         if git_branch.endswith("\n"):
             git_branch = git_branch[:-1]
         # Hash the deps file to look for changes
         deps_checksum = None
         if extra_deps_file is not None and os.path.isfile(extra_deps_file):
             deps_checksum = hashlib.md5(extra_deps_file).digest()
-        return Manifest(os.path.normpath(project_root), git_branch, git_hash, datetime.datetime.now(), deps_checksum)
+        return Manifest(grind_git_hash, os.path.normpath(project_root), git_branch, git_hash, datetime.datetime.now(), deps_checksum)
 
 class CacheManager:
     """Interface for interacting with cached dependency sets (list, clear, etc)."""
