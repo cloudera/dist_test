@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from __future__ import with_statement
+import contextlib
 import getpass
 import logging
 import multiprocessing
@@ -336,7 +337,7 @@ def _extract(path, out_dir):
     os.makedirs(dest_path)
     LOG.debug("Extracting %s into %s", path, dest_path)
     try:
-      with zipfile.ZipFile(path, "r") as myzip:
+      with contextlib.closing(zipfile.ZipFile(path, "r")) as myzip:
         for info in myzip.infolist():
             myzip.extract(info, dest_path)
     except Exception as e:
