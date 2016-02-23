@@ -21,6 +21,8 @@ import yaml
 import config
 
 class Task(object):
+  """Serializable task description used for communicating tasks between
+  server and slaves."""
   @staticmethod
   def from_json(json_str):
     return Task(json.loads(json_str))
@@ -60,6 +62,42 @@ class Task(object):
 
   def get_id(self):
     return "%s.%s.%s" % (self.job_id, self.task_id, self.attempt)
+
+class TaskGroup(object):
+  """Calculate group-level status information about a set of tasks rows returned
+  by fetch_task_rows_for_job"""
+
+  def __init__(self, tasks):
+    self.tasks = tasks
+    # Compute group status
+    failed = [t['status'] is not None and t['status'] != 0 for t in tasks]
+    all_failed = all(failed)
+    any_failed = any(failed)
+    has_retries_remaining = all([t['attempt'] != t['max_retries'] for t in tasks])
+    any_succeeded = any([t['status'] == 0 for t in tasks])
+    # Failed groups have all non-zero status codes and have used all their retries.
+    # Flaky groups have at least one failure and one success, or have retries left.
+    # Succeeded groups have at least one success.
+    #
+    # Failed/succeeded are mutually exclusive. Flakiness is not.
+    self.is_failed = False
+    self.is_flaky = False
+    self.is_succeeded = False
+
+    if all_failed:
+      if has_retries_remaining:
+        self.is_flaky = True
+      else:
+        self.is_failed = True
+    elif any_succeeded:
+      self.is_succeeded = True
+      if any_failed:
+        self.is_flaky = True
+
+    # Group is finished either when it has a success, or is out of retries
+    self.is_finished = False
+    if any_succeeded or not has_retries_remaining:
+      self.is_finished = True
 
 class ReservedTask(object):
   def __init__(self, bs_elem):
