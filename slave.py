@@ -29,8 +29,6 @@ import zipfile
 from config import Config
 import dist_test
 
-import metrics
-
 RUN_ISOLATED_OUT_RE = re.compile(r'\[run_isolated_out_hack\](.+?)\[/run_isolated_out_hack\]',
                                  re.DOTALL)
 LOG = None
@@ -39,6 +37,43 @@ LOG = None
 # The load average is the percentage of time over the last N seconds
 # during which the slave was running a job.
 NUM_SECONDS_LOAD_AVERAGE = 30
+
+class SlaveMetrics(object):
+  import metrics
+
+  def __init__(self, slave):
+    self.metrics_collector = metrics.MetricsCollector()
+    self.metrics_lock = threading.Lock()
+    self.slave = slave
+
+  def submit_load_metric(self, load):
+    if not self.metrics_lock.acquire(False):
+      # if we can't get the lock, just bail -- we're already
+      # submitting the current load from another thread and we can't
+      # submit two metrics in short succession anyway
+      return
+    try:
+      self.metrics_collector.submit(load)
+    except Exception, e:
+      logging.warning("Failed to submit load metric: %s" % str(e))
+    finally:
+      self.metrics_lock.release()
+
+  def run_metrics_thread(self):
+    ring_buffer = [False for x in range(NUM_SECONDS_LOAD_AVERAGE)]
+    i = 0
+    while True:
+      ring_buffer[i % len(ring_buffer)] = self.slave.is_busy
+      i += 1
+      load = sum(ring_buffer) / float(len(ring_buffer))
+      time.sleep(1)
+      if i % 10 == 0:
+        self.submit_load_metric(load)
+
+  def run():
+    metrics_thread = threading.Thread(target=self.run_metrics_thread)
+    metrics_thread.daemon = True
+    metrics_thread.start()
 
 class Slave(object):
 
@@ -49,10 +84,10 @@ class Slave(object):
     self.task_queue = dist_test.TaskQueue(self.config)
     self.results_store = dist_test.ResultsStore(self.config)
     self.cache_dir = self._get_exclusive_cache_dir()
-    self.metrics_collector = metrics.MetricsCollector()
-    self.metrics_lock = threading.Lock()
     self.cur_task = None
     self.is_busy = False
+
+    self.slave_metrics = None
 
   def _get_exclusive_cache_dir(self):
     for i in xrange(0, 16):
@@ -198,7 +233,8 @@ class Slave(object):
 
       if time.time() - last_touch > 10:
         LOG.info("Still running: " + task.task.description)
-        self.submit_load_metric(1)
+        if self.slave_metrics is not None:
+          self.slave_metrics.submit_load_metric(1)
         try:
           task.bs_elem.touch()
         except:
@@ -254,30 +290,6 @@ class Slave(object):
     if result.get('status') != 'SUCCESS':
       sys.err.println("Unable to submit retry task: %s" % repr(result))
 
-  def submit_load_metric(self, load):
-    if not self.metrics_lock.acquire(False):
-      # if we can't get the lock, just bail -- we're already
-      # submitting the current load from another thread and we can't
-      # submit two metrics in short succession anyway
-      return
-    try:
-      self.metrics_collector.submit(load)
-    except Exception, e:
-      logging.warning("Failed to submit load metric: %s" % str(e))
-    finally:
-      self.metrics_lock.release()
-
-  def run_metrics_thread(self):
-    ring_buffer = [False for x in range(NUM_SECONDS_LOAD_AVERAGE)]
-    i = 0
-    while True:
-      ring_buffer[i % len(ring_buffer)] = self.is_busy
-      i += 1
-      load = sum(ring_buffer) / float(len(ring_buffer))
-      time.sleep(1)
-      if i % 10 == 0:
-        self.submit_load_metric(load)
-
   def handle_sigterm(self):
     logging.error("caught SIGTERM! shutting down")
     if self.cur_task is not None:
@@ -286,9 +298,10 @@ class Slave(object):
     os._exit(0)
 
   def run(self):
-    metrics_thread = threading.Thread(target=self.run_metrics_thread)
-    metrics_thread.daemon = True
-    metrics_thread.start()
+    if self.config.DIST_TEST_SUBMIT_GCE_METRICS:
+      self.slave_metrics = SlaveMetrics(self)
+      self.slave_metrics.run()
+
     while True:
       try:
         logging.info("waiting for next task...")
