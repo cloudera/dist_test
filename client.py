@@ -83,7 +83,7 @@ def print_status(start_time, previous_result, result, first=False, retcode=None)
 
 def get_return_code(result):
   retcode = None
-  if result['finished_tasks'] == result['total_tasks']:
+  if result['status'] == "finished":
     if result['failed_groups'] > 0:
       retcode = 88
     else:
