@@ -15,6 +15,7 @@ except:
   import json
 import StringIO
 import gzip
+import netaddr
 from collections import defaultdict
 
 from config import Config
@@ -23,6 +24,35 @@ import dist_test
 TRACE_HTML = os.path.join(os.path.dirname(__file__), "trace.html")
 
 LOG = None
+
+class Authorize(cherrypy.Tool):
+
+  def __init__(self, allowed_ip_ranges=None):
+    self.allowed_ranges = [netaddr.IPNetwork(a) for a in allowed_ip_ranges]
+    self._point = "on_start_resource"
+    self._name = None
+    self._priority = 50
+    self._setargs()
+
+  def check_access(self):
+    ip = netaddr.IPAddress(cherrypy.request.remote.ip)
+    authorized = False
+    for allowed in self.allowed_ranges:
+      if ip in allowed:
+        authorized = True
+        break
+
+    if not authorized:
+      raise cherrypy.HTTPError(403)
+
+  def callable(self):
+    self.check_access()
+
+# Need this unfortunate __main__ block here as well, because the authorize decorator needs config, but
+# also needs to be installed into the cherrypy toolbox before use
+if __name__ == "__main__":
+  config = Config()
+  cherrypy.tools.authorize = Authorize(allowed_ip_ranges=config.DIST_TEST_ALLOWED_IP_RANGES.split(","))
 
 class DistTestServer(object):
 
@@ -92,12 +122,14 @@ class DistTestServer(object):
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
+  @cherrypy.tools.authorize()
   def cancel_job(self, job_id):
     self.results_store.cancel_job(job_id)
     return {"status": "SUCCESS"}
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
+  @cherrypy.tools.authorize()
   def submit_job(self, job_id, job_json):
     job_desc = json.loads(job_json)
 
@@ -117,6 +149,7 @@ class DistTestServer(object):
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
+  @cherrypy.tools.authorize()
   def retry_task(self, task_json):
     task = dist_test.Task.from_json(task_json)
     if task.attempt < task.max_retries:
@@ -557,6 +590,8 @@ if __name__ == "__main__":
 
   LOG.info("Writing access logs to %s", config.SERVER_ACCESS_LOG)
   LOG.info("Writing error logs to %s", config.SERVER_ERROR_LOG)
+
+
   cherrypy.config.update({
     'server.socket_host': '0.0.0.0',
     'server.socket_port': 8081,
