@@ -96,7 +96,7 @@ class TaskGroup(object):
 
     # Group is finished either when it has a success, or is out of retries
     self.is_finished = False
-    if any_succeeded or not has_retries_remaining:
+    if any_succeeded or (all_failed and not has_retries_remaining):
       self.is_finished = True
 
 class ReservedTask(object):
