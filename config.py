@@ -36,7 +36,7 @@ class Config(object):
     # Populate parser with default values
     defaults = {
       "log_dir" : os.path.join(os.path.dirname(os.path.realpath(__file__)), "logs"),
-      "submit_gce_metrics" : True,
+      "submit_gce_metrics" : "True",
       "allowed_ip_ranges": "0.0.0.0/0",
     }
     self.config = SafeConfigParser(defaults)
