@@ -60,6 +60,9 @@ class Task(object):
     )
     return json.dumps(job_struct)
 
+  def get_retry_id(self):
+    return "%s.%s" % (self.job_id, self.task_id)
+
   def get_id(self):
     return "%s.%s.%s" % (self.job_id, self.task_id, self.attempt)
 

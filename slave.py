@@ -3,6 +3,7 @@
 from __future__ import with_statement
 import beanstalkc
 import boto
+import collections
 import cStringIO
 import errno
 import fcntl
@@ -75,6 +76,47 @@ class SlaveMetrics(object):
     metrics_thread.daemon = True
     metrics_thread.start()
 
+
+class RetryCache(object):
+  """Time-based and count-based cache to avoid running retried tasks
+  again on the same slave. If a slave sees a retry it submitted, it
+  puts it back into beanstalk and does a short sleep in the hope that
+  another slave dequeues it.
+
+  This cache tracks the number of times that a given task has been retried
+  by this slave. When the number of times reaches a threshold, the task
+  is evicted from the cache, letting the task run on the same slave.
+  This prevents livelock.
+
+  Otherwise, the cache is evicted based on oldest insertion time."""
+
+  def __init__(self, max_size=100, max_count=10):
+    """Create a new RetryCache.
+    
+    max_size: maximum number of items in the cache.
+    max_count: maximum number of touches before an item expires."""
+    self.cache = collections.OrderedDict()
+    self.max_size = max_size
+    self.max_count = max_count
+
+  def get(self, item):
+    if not item in self.cache.keys():
+      return None
+    count = self.cache[item]
+    if count > self.max_count:
+      LOG.debug("Item %s hit max_count of %d, evicting from cache", item, self.max_count)
+      del self.cache[item]
+    else:
+      self.cache[item] += 1
+
+    return item
+
+  def put(self, item):
+    if len(self.cache.keys()) == self.max_size:
+      LOG.debug("Cache is at capacity %d, evicting oldest item %s", self.max_size, item)
+      self.cache.popitem()
+    self.cache[item] = 0
+
 class Slave(object):
 
   def __init__(self, config):
@@ -86,6 +128,7 @@ class Slave(object):
     self.cache_dir = self._get_exclusive_cache_dir()
     self.cur_task = None
     self.is_busy = False
+    self.retry_cache = RetryCache()
 
     self.slave_metrics = None
 
@@ -280,15 +323,18 @@ class Slave(object):
 
     # Retry if non-zero exit code and have retries remaining
     if rc != 0 and task.task.attempt < task.task.max_retries:
-      self.submit_retry_task(task.task.to_json())
+      self.submit_retry_task(task)
 
-  def submit_retry_task(self, task_json):
+  def submit_retry_task(self, task):
+    task_json = task.task.to_json()
     form_data = urllib.urlencode({'task_json': task_json})
     url = self.config.DIST_TEST_MASTER + "/retry_task"
     result_str = urllib2.urlopen(url, data=form_data).read()
     result = json.loads(result_str)
     if result.get('status') != 'SUCCESS':
       sys.err.println("Unable to submit retry task: %s" % repr(result))
+    # Add to the retry cache for anti-affinity
+    self.retry_cache.put(task.task.get_retry_id())
 
   def handle_sigterm(self):
     logging.error("caught SIGTERM! shutting down")
@@ -311,7 +357,16 @@ class Slave(object):
         LOG.warning("Failed to reserve job: %s" % str(e))
         time.sleep(1)
         continue
+
       LOG.info("got task: %s", self.cur_task.task.to_json())
+
+      if self.retry_cache.get(self.cur_task.task.get_retry_id()) is not None:
+        sleep_time = 5
+        LOG.info("Got a retry task submitted by this slave, releasing it and sleeping %d s...", sleep_time)
+        self.cur_task.bs_elem.release()
+        time.sleep(sleep_time)
+        continue
+
       self.is_busy = True
       self.run_task(self.cur_task)
       try:
