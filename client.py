@@ -136,7 +136,9 @@ def submit_job_json(job_prefix, job_json):
     job_prefix += "."
   job_id = job_prefix + generate_job_id()
   form_data = urllib.urlencode({'job_id': job_id, 'job_json': job_json})
-  result_str = urllib2.urlopen(TEST_MASTER + "/submit_job",
+  url = TEST_MASTER + "/submit_job"
+  LOG.info("Submitting job to " + url)
+  result_str = urllib2.urlopen(url,
                                data=form_data).read()
   result = json.loads(result_str)
   if result.get('status') != 'SUCCESS':
