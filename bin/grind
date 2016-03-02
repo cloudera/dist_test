@@ -290,13 +290,17 @@ class TestRunner:
         extra_deps_file = None
         if os.path.isfile(default_extra_deps_file):
             extra_deps_file = default_extra_deps_file
+
+        maven_flags = os.environ.get('GRIND_MAVEN_FLAGS')
+
         i = isolate.Isolate(self.project_dir,
                             self.output_dir,
                             include_modules = self.args.include_modules,
                             include_patterns = self.args.include_patterns,
                             exclude_patterns = self.args.exclude_patterns,
                             cache_dir = self.config.grind_cache_dir,
-                            extra_deps_file = extra_deps_file)
+                            extra_deps_file = extra_deps_file,
+                            maven_flags = maven_flags)
         # Enumerate tests and package test dependencies
         i.package()
         # Generate per-test task descriptions

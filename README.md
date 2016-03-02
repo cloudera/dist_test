@@ -89,6 +89,8 @@ Hadoop also builds native libraries which are not included in the JAR, but are a
 
 Richer support for specifying these additional dependencies will be added on demand.
 
+grind also allows setting of Maven flags via the `GRIND_MAVEN_FLAGS` environment variable. This allows you to specify profiles and additional properties to Maven, e.g. `-Pnative` or `-Dmaven.javadoc.skip=true`.
+
 Common issues when onboarding
 -----------------------------
 

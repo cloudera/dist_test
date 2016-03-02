@@ -55,7 +55,31 @@ logger = logging.getLogger(__name__)
 class Isolate:
 
     __RUN_SCRIPT_NAME = """run_test.sh"""
-    __RUN_SCRIPT_CONTENTS = """#!/usr/bin/env bash
+
+    __COMMAND = """%s <(POM) <(TESTCLASS)""" % __RUN_SCRIPT_NAME
+
+    __ISOLATE_NAME = """disttest.isolate"""
+
+    def __init__(self, project_root, output_dir,
+                 include_modules=None, include_patterns=None, exclude_patterns=None,
+                 cache_dir=None, extra_deps_file=None, maven_flags=None):
+        logger.info("Using output directory " + output_dir)
+        self.output_dir = output_dir
+        self.maven_project = mavenproject.MavenProject(project_root,
+                                                       include_modules=include_modules,
+                                                       include_patterns=include_patterns,
+                                                       exclude_patterns=exclude_patterns)
+        self.packager = packager.Packager(self.maven_project, self.output_dir,
+                                          cache_dir=cache_dir, extra_deps_file=extra_deps_file)
+        self.isolated_files = []
+        self._maven_flags = maven_flags
+
+    def package(self):
+        self.packager.package_all()
+        self.packager.write_unpack_script("unpack.sh")
+
+    def _generate_run_script_contents(self):
+        contents = """#!/usr/bin/env bash
 set -x
 
 [ -z "${AWK}" ] && AWK="$(which gawk 2>/dev/null)" || AWK="$(which awk 2>/dev/null)" || { echo "Error: Could not find AWK tool."; exit 1; }
@@ -78,36 +102,23 @@ run which mvn
 run mvn -version
 run which java
 run java -version
-
-run mvn --settings $(pwd)/settings.xml -Dmaven.repo.local=$(pwd)/.m2/repository -Dmaven.artifact.threads=100 surefire:test --file $1 -Dtest=$2 2>&1
 """
 
-    __COMMAND = """%s <(POM) <(TESTCLASS)""" % __RUN_SCRIPT_NAME
+        # Write the actual mvn invocation
+        contents += "\n"
+        contents += "run mvn "
 
-    __ISOLATE_NAME = """disttest.isolate"""
+        if self._maven_flags is not None:
+            contents += "%s " % self._maven_flags
 
-    def __init__(self, project_root, output_dir,
-                 include_modules=None, include_patterns=None, exclude_patterns=None,
-                 cache_dir=None, extra_deps_file=None):
-        logger.info("Using output directory " + output_dir)
-        self.output_dir = output_dir
-        self.maven_project = mavenproject.MavenProject(project_root,
-                                                       include_modules=include_modules,
-                                                       include_patterns=include_patterns,
-                                                       exclude_patterns=exclude_patterns)
-        self.packager = packager.Packager(self.maven_project, self.output_dir,
-                                          cache_dir=cache_dir, extra_deps_file=extra_deps_file)
-        self.isolated_files = []
-
-    def package(self):
-        self.packager.package_all()
-        self.packager.write_unpack_script("unpack.sh")
+        contents += """--settings $(pwd)/settings.xml -Dmaven.repo.local=$(pwd)/.m2/repository -Dmaven.artifact.threads=100 surefire:test --file $1 -Dtest=$2 2>&1"""
+        return contents
 
     def generate(self):
         # Write the test runner script
         run_path = os.path.join(self.output_dir, self.__RUN_SCRIPT_NAME)
         with open(run_path, "wt") as out:
-            out.write(self.__RUN_SCRIPT_CONTENTS)
+            out.write(self._generate_run_script_contents())
         os.chmod(run_path, 0755)
 
         # Write the parameterized isolate file
