@@ -142,9 +142,11 @@ class Slave(object):
   def make_archive(self, task, test_dir):
     # Return early if no test_dir is specified
     if test_dir is None:
+      LOG.warn("test_dir not given, skipping archive")
       return None
     # Return early if there are no globs specified
     if task.task.artifact_archive_globs is None or len(task.task.artifact_archive_globs) == 0:
+      LOG.warn("archive glob not given, skipping archive")
       return None
     all_matched = set()
     total_size = 0
@@ -153,8 +155,8 @@ class Slave(object):
           matched = glob2.iglob(test_dir + "/" + g)
           for m in matched:
             canonical = os.path.realpath(m)
-            if not canonical.startswith(test_dir):
-              LOG.warn("Glob %s matched file outside of test_dir, skipping: %s" % (g, canonical))
+            if sys.platform != "darwin" and (not canonical.startswith(test_dir)): # work around on mac os
+              LOG.warn("Glob %s matched file outside of test_dir %s, skipping: %s (sys=%s)" % (g, test_dir, canonical, sys.platform))
               continue
             total_size += os.stat(canonical).st_size
             all_matched.add(canonical)
