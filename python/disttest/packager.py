@@ -206,7 +206,8 @@ class Packager:
     # Call it this for familiarity
     _MAVEN_REL_ROOT = ".m2/repository"
 
-    def __init__(self, maven_project, output_root, cache_dir=None, extra_deps_file=None, ignore=None):
+    def __init__(self, maven_project, output_root,
+                 cache_dir=None, extra_deps_file=None, ignore=None, maven_flags=None):
         self.__maven_project = maven_project
         self.__project_root = maven_project.project_root
         self.__output_root = output_root
@@ -227,6 +228,9 @@ class Packager:
         self.__test_jars = []
         self.__test_dirs = []
         self.__jars = []
+        self.__maven_flags = ""
+        if maven_flags is not None:
+            self.__maven_flags = maven_flags
 
         # Pass ourself in to build Manifest
         self.__manifest = Manifest.build_from_project(self.__project_root, self.__extra_deps_file)
@@ -332,6 +336,8 @@ class Packager:
         env_mvn = util.check_output(cmd, shell=True, cwd=self.__cached_project_root)
         if env_mvn.endswith("\n"):
             env_mvn = env_mvn[:-1]
+
+        env_mvn = env_mvn + " " + self.__maven_flags
 
         cached_m2_repo = os.path.join(self.__cached_project_root, Packager._MAVEN_REL_ROOT)
         settings_xml = os.path.join(self.__cached_project_root, "settings.xml")

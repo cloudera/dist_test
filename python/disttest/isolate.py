@@ -70,7 +70,8 @@ class Isolate:
                                                        include_patterns=include_patterns,
                                                        exclude_patterns=exclude_patterns)
         self.packager = packager.Packager(self.maven_project, self.output_dir,
-                                          cache_dir=cache_dir, extra_deps_file=extra_deps_file)
+                                          cache_dir=cache_dir, extra_deps_file=extra_deps_file,
+                                          maven_flags = maven_flags)
         self.isolated_files = []
         self._maven_flags = maven_flags
 
