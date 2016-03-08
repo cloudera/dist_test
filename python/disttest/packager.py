@@ -1,6 +1,7 @@
 import datetime
 import errno
 import fnmatch
+import glob
 import hashlib
 import os
 import json
@@ -20,11 +21,13 @@ class ExtraDependencies:
     This includes things like folders created by antrun or native libraries
     not bundled in JARs."""
 
-    def __init__(self, empty_dirs, file_patterns):
+    def __init__(self, empty_dirs, file_patterns, file_globs):
         assert type(empty_dirs) is list
         assert type(file_patterns) is list
+        assert type(file_globs) is list
         self.empty_dirs = empty_dirs
         self.file_patterns = file_patterns
+        self.file_globs = file_globs
 
     @staticmethod
     def read(input_file):
@@ -33,13 +36,13 @@ class ExtraDependencies:
             return None
         with open(input_file, "r") as o:
             d = json.load(o)
-            empty_dirs = []
-            if "empty_dirs" in d.keys():
-                empty_dirs = d["empty_dirs"]
-            file_patterns = []
-            if "file_patterns" in d.keys():
-                file_patterns = d["file_patterns"]
-            return ExtraDependencies(empty_dirs, file_patterns)
+            keys = ["empty_dirs", "file_patterns", "file_globs"]
+            values = [[]] * len(keys)
+            for i in range(len(keys)):
+                if keys[i] in d.keys():
+                    values[i] = d[keys[i]]
+
+            return ExtraDependencies(*values)
 
 class Manifest:
     """Identifies a Maven project based on the git branch.
@@ -217,7 +220,7 @@ class Packager:
             logger.info("No cache dir specified, using temp directory %s instead", self.__cache_dir)
         self.__cached_project_root = self.__cache_dir + self.__project_root
         self.__extra_deps_file = extra_deps_file
-        self.__extra_deps = ExtraDependencies([], [])
+        self.__extra_deps = ExtraDependencies([], [], [])
         if extra_deps_file is not None:
             self.__extra_deps = ExtraDependencies.read(extra_deps_file)
 
@@ -297,6 +300,15 @@ class Packager:
                         if fnmatch.fnmatch(f, pattern):
                             artifact = os.path.join(root, f)
                             self.__copy(module.root, artifact)
+            cwd = os.getcwd()
+            os.chdir(module.root)
+            for g in self.__extra_deps.file_globs:
+                for match in glob.iglob(g):
+                    if os.path.isabs(match):
+                        LOG.warn("Skipping absolute match %s", match)
+                    else:
+                        self.__copy(module.root, os.path.join(module.root, match))
+            os.chdir(cwd)
 
         logger.info("Packaged %s modules to output directory %s",\
                     len(self.__maven_project.modules), self.__output_root)
