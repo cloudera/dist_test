@@ -29,7 +29,6 @@ To run the server and slave locally (useful for testing), you need a configurati
 
         [dist_test]
         master=http://localhost:8081/
-        submit_gce_metrics=False
 
 Note that as part of this, you need to setup an AWS account to store test results, and also a MySQL instance running with a configured user/password and database.
 

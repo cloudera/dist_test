@@ -34,47 +34,6 @@ RUN_ISOLATED_OUT_RE = re.compile(r'\[run_isolated_out_hack\](.+?)\[/run_isolated
                                  re.DOTALL)
 LOG = None
 
-# Number of seconds over which to compute the load average for metrics.
-# The load average is the percentage of time over the last N seconds
-# during which the slave was running a job.
-NUM_SECONDS_LOAD_AVERAGE = 30
-
-class SlaveMetrics(object):
-  import metrics
-
-  def __init__(self, slave):
-    self.metrics_collector = metrics.MetricsCollector()
-    self.metrics_lock = threading.Lock()
-    self.slave = slave
-
-  def submit_load_metric(self, load):
-    if not self.metrics_lock.acquire(False):
-      # if we can't get the lock, just bail -- we're already
-      # submitting the current load from another thread and we can't
-      # submit two metrics in short succession anyway
-      return
-    try:
-      self.metrics_collector.submit(load)
-    except Exception, e:
-      logging.warning("Failed to submit load metric: %s" % str(e))
-    finally:
-      self.metrics_lock.release()
-
-  def run_metrics_thread(self):
-    ring_buffer = [False for x in range(NUM_SECONDS_LOAD_AVERAGE)]
-    i = 0
-    while True:
-      ring_buffer[i % len(ring_buffer)] = self.slave.is_busy
-      i += 1
-      load = sum(ring_buffer) / float(len(ring_buffer))
-      time.sleep(1)
-      if i % 10 == 0:
-        self.submit_load_metric(load)
-
-  def run():
-    metrics_thread = threading.Thread(target=self.run_metrics_thread)
-    metrics_thread.daemon = True
-    metrics_thread.start()
 
 
 class RetryCache(object):
@@ -129,8 +88,6 @@ class Slave(object):
     self.cur_task = None
     self.is_busy = False
     self.retry_cache = RetryCache()
-
-    self.slave_metrics = None
 
   def _get_exclusive_cache_dir(self):
     for i in xrange(0, 16):
@@ -276,8 +233,6 @@ class Slave(object):
 
       if time.time() - last_touch > 10:
         LOG.info("Still running: " + task.task.description)
-        if self.slave_metrics is not None:
-          self.slave_metrics.submit_load_metric(1)
         try:
           task.bs_elem.touch()
         except:
@@ -344,10 +299,6 @@ class Slave(object):
     os._exit(0)
 
   def run(self):
-    if self.config.DIST_TEST_SUBMIT_GCE_METRICS:
-      self.slave_metrics = SlaveMetrics(self)
-      self.slave_metrics.run()
-
     while True:
       try:
         logging.info("waiting for next task...")

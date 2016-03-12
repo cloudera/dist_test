@@ -68,7 +68,6 @@ class Config(object):
     self.DIST_TEST_JOB_PATH = self._get_with_env_override(*self.DIST_TEST_JOB_PATH_CONFIG)
     if self.DIST_TEST_JOB_PATH is None:
       self.DIST_TEST_JOB_PATH = os.path.expanduser("~/.dist-test-last-job")
-    self.DIST_TEST_SUBMIT_GCE_METRICS = self.config.getboolean('dist_test', 'submit_gce_metrics')
     self.DIST_TEST_ALLOWED_IP_RANGES = self.config.get('dist_test', 'allowed_ip_ranges')
 
     self.log_dir = self.config.get('dist_test', 'log_dir')
