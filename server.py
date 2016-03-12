@@ -15,6 +15,7 @@ except:
   import json
 import StringIO
 import gzip
+import netaddr
 from collections import defaultdict
 
 from config import Config
@@ -23,6 +24,35 @@ import dist_test
 TRACE_HTML = os.path.join(os.path.dirname(__file__), "trace.html")
 
 LOG = None
+
+class Authorize(cherrypy.Tool):
+
+  def __init__(self, allowed_ip_ranges=None):
+    self.allowed_ranges = [netaddr.IPNetwork(a) for a in allowed_ip_ranges]
+    self._point = "on_start_resource"
+    self._name = None
+    self._priority = 50
+    self._setargs()
+
+  def check_access(self):
+    ip = netaddr.IPAddress(cherrypy.request.remote.ip)
+    authorized = False
+    for allowed in self.allowed_ranges:
+      if ip in allowed:
+        authorized = True
+        break
+
+    if not authorized:
+      raise cherrypy.HTTPError(403)
+
+  def callable(self):
+    self.check_access()
+
+# Need this unfortunate __main__ block here as well, because the authorize decorator needs config, but
+# also needs to be installed into the cherrypy toolbox before use
+if __name__ == "__main__":
+  config = Config()
+  cherrypy.tools.authorize = Authorize(allowed_ip_ranges=config.DIST_TEST_ALLOWED_IP_RANGES.split(","))
 
 class DistTestServer(object):
 
@@ -46,7 +76,7 @@ class DistTestServer(object):
       return "No tasks found for specified job_id %s" % job_id
     job_summary, task_groups = self._summarize_tasks(tasks)
     body = ""
-    body += self._render_job_header(job_id, job_summary, task_groups)
+    body += self._render_job_header(job_id, job_summary)
     body += self._render_tasks(tasks, job_summary, task_groups)
     return self.render_container(body)
 
@@ -92,12 +122,14 @@ class DistTestServer(object):
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
+  @cherrypy.tools.authorize()
   def cancel_job(self, job_id):
     self.results_store.cancel_job(job_id)
     return {"status": "SUCCESS"}
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
+  @cherrypy.tools.authorize()
   def submit_job(self, job_id, job_json):
     job_desc = json.loads(job_json)
 
@@ -117,6 +149,7 @@ class DistTestServer(object):
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
+  @cherrypy.tools.authorize()
   def retry_task(self, task_json):
     task = dist_test.Task.from_json(task_json)
     if task.attempt < task.max_retries:
@@ -206,36 +239,35 @@ class DistTestServer(object):
     Tasks are uniquely identified by the compound key (job_id, task_id, attempt).
     """
 
+    # Task-level status information
     result = {}
     result['total_tasks'] = len(tasks)
     result['finished_tasks'] = len([1 for t in tasks if t['status'] is not None])
     result['running_tasks'] = len([1 for t in tasks if t['status'] is None])
     result['retried_tasks'] = len([1 for t in tasks if t['attempt'] > 0])
     result['timedout_tasks'] = len([1 for t in tasks if t['status'] == -9])
-    # Calculating success and failure requires grouping by task_id,
-    # since flaky tasks can be automatically retried
-    task_groups = defaultdict(list)
+    result['failed_tasks'] = len([1 for t in tasks if t['status'] != 0])
+    result['succeeded_tasks'] = len([1 for t in tasks if t['status'] == 0])
+
+    # Group-level status information
+    tasks_by_id = defaultdict(list)
     result['failed_groups'] = 0
     result['succeeded_groups'] = 0
     result['flaky_groups'] = 0
+
+    # Group tasks by task ID and turn them into TaskGroups
     for t in tasks:
-      task_groups[t['task_id']].append(t)
+      tasks_by_id[t['task_id']].append(t)
+    task_groups = {}
+    for task_id, group in tasks_by_id.iteritems():
+      task_groups[task_id] = dist_test.TaskGroup(group)
+
     result['total_groups'] = len(task_groups)
-    for group in task_groups.values():
-      failed_tasks = [t['status'] is not None and t['status'] != 0 for t in group]
-      failed = all(failed_tasks)
-      succeeded = any([t['status'] == 0 for t in group])
-      timedout = all([t['status'] == -9 for t in group])
-      if failed:
-        result['failed_groups'] += 1
-      if succeeded:
-        result['succeeded_groups'] += 1
-      if timedout:
-        result['timedout_tasks'] += 1
-      # If we succeeded after some failures, increment flaky count
-      if succeeded and any(failed_tasks):
-        result['flaky_groups'] += 1
-    result['finished_groups'] = result['failed_groups'] + result['succeeded_groups']
+    result['flaky_groups'] = len([1 for g in task_groups.values() if g.is_flaky])
+    result['failed_groups'] = len([1 for g in task_groups.values() if g.is_failed])
+    result['failed_groups'] = len([1 for g in task_groups.values() if g.is_failed])
+    result['succeeded_groups'] = len([1 for g in task_groups.values() if g.is_succeeded])
+    result['finished_groups'] = len([1 for g in task_groups.values() if g.is_finished])
 
     # Determine job state: if it's finished, how long its been running
     finish_time = None
@@ -245,11 +277,18 @@ class DistTestServer(object):
     result['status'] = "running"
     stop = datetime.datetime.now()
 
-    if result['total_tasks'] == result['finished_tasks']:
+    if result['total_groups'] == result['finished_groups']:
       result['status'] = "finished"
       finish_time = max([t["complete_timestamp"] for t in tasks])
       stop = finish_time
     runtime = stop - submit_time
+
+    # Compute sum of failed tasks in each flaky group
+    flaky_groups = [g for g in task_groups.values() if g.is_flaky]
+    result['flaky_tasks'] = 0
+    for group in flaky_groups:
+      flaky_tasks = [t for t in group.tasks if t['status'] != 0]
+      result['flaky_tasks'] += len(flaky_tasks)
 
     # datetimes can't be auto-JSON'd, do not include them
     if not json_compatible:
@@ -298,7 +337,7 @@ class DistTestServer(object):
     """)
     return template.render(jobs=jobs, stats=stats)
 
-  def _render_job_header(self, job_id, job_summary, task_groups):
+  def _render_job_header(self, job_id, job_summary):
     if job_summary['total_groups'] > 0:
       success_percent = job_summary['succeeded_groups'] * 100 / float(job_summary['total_groups'])
       fail_percent = job_summary['failed_groups'] * 100 / float(job_summary['total_groups'])
@@ -340,14 +379,6 @@ class DistTestServer(object):
 
 
   def _render_tasks(self, tasks, job_summary, task_groups):
-    # Calculate status of each task group
-    task_to_group_status = defaultdict(dict)
-    for task_id, group in task_groups.iteritems():
-      # Success if any of the tasks in group succeeded
-      task_to_group_status[task_id]['succeeded'] = any([t['status'] == 0 for t in group])
-      # Failed if we hit the max retry and it failed
-      task_to_group_status[task_id]['failed'] = any([t['status'] is not None and t['status'] != 0 for t in group if t['attempt'] == t['max_retries']])
-
     for t in tasks:
       # stdout/stderr links
       if t['stdout_key']:
@@ -368,32 +399,34 @@ class DistTestServer(object):
         t['runtime'] = delta.seconds + (delta.days*24*60*60)
       else:
         t['runtime'] = None
-      # Task status.
-      #   All failures, no retries left: mark failures as failed
-      #   All failures, some retries left: mark failures as flaky
-      #   One success: mark failures as flaky
+
+      # Set task status classes for filtering.
       status = []
+      task_group = task_groups[t["task_id"]]
       if t['status'] is None:
-        status = ['task-running']
+        status += ['task-running']
       elif t['status'] == 0:
-        status = ['task-successful']
+        status += ['task-successful']
+      elif t['status'] == -9:
+        status += ['task-timedout']
       else:
-        status = ['task-failed']
-        group_status = task_to_group_status[t['task_id']]
-        if group_status['succeeded'] or not group_status['failed']:
-          status = ['task-flaky']
+        status += ['task-failed']
+        if task_group.is_flaky:
+          status += ['task-flaky']
+
+
       t['status_class'] = ' '.join(status)
 
     template = Template("""
     <br style="clear: both;"/>
     <div>
       Show:
-      <a id="show-all">all ({{ job_summary.total_groups }})</a> |
+      <a id="show-all">all ({{ job_summary.total_tasks }})</a> |
       <a id="show-running">running ({{ job_summary.running_tasks }})</a> |
-      <a id="show-failed">failed ({{ job_summary.failed_groups }})</a> |
-      <a id="show-successful">successful ({{ job_summary.succeeded_groups }})</a> |
+      <a id="show-failed">failed ({{ job_summary.failed_tasks }})</a> |
+      <a id="show-successful">successful ({{ job_summary.succeeded_tasks }})</a> |
       <a id="show-timedout">timed out ({{ job_summary.timedout_tasks }})</a> |
-      <a id="show-flaky">flaky ({{ job_summary.flaky_groups }})</a>
+      <a id="show-flaky">flaky ({{ job_summary.flaky_tasks }})</a>
     </div>
     <table class="table sortable" id="tasks">
     <thead>
@@ -557,6 +590,8 @@ if __name__ == "__main__":
 
   LOG.info("Writing access logs to %s", config.SERVER_ACCESS_LOG)
   LOG.info("Writing error logs to %s", config.SERVER_ERROR_LOG)
+
+
   cherrypy.config.update({
     'server.socket_host': '0.0.0.0',
     'server.socket_port': 8081,
