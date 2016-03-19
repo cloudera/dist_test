@@ -225,6 +225,10 @@ class TestRunner:
                             action='append',
                             dest='include_modules',
                             help="Run tests for a module. Can be specified multiple times.")
+        parser.add_argument('-E', '--exclude-module',
+                            action='append',
+                            dest='exclude_modules',
+                            help="Exclude tests for a module. Can be specificed multiple times.")
         # Patterns
         parser.add_argument('-i', '--include-pattern',
                             action='append',
@@ -296,6 +300,7 @@ class TestRunner:
         i = isolate.Isolate(self.project_dir,
                             self.output_dir,
                             include_modules = self.args.include_modules,
+                            exclude_modules = self.args.exclude_modules,
                             include_patterns = self.args.include_patterns,
                             exclude_patterns = self.args.exclude_patterns,
                             cache_dir = self.config.grind_cache_dir,
