@@ -89,7 +89,27 @@ Hadoop also builds native libraries which are not included in the JAR, but are a
 
 Richer support for specifying these additional dependencies will be added on demand.
 
-grind also allows setting of Maven flags via the `GRIND_MAVEN_FLAGS` environment variable. This allows you to specify profiles and additional properties to Maven, e.g. `-Pnative` or `-Dmaven.javadoc.skip=true`.
+### Environment variables
+
+Grind also allows setting some special configuration via environment variables.
+
+##### GRIND_MAVEN_FLAGS
+
+This allows you to specify profiles and additional properties to Maven.
+
+e.g. `export GRIND_MAVEN_FLAGS='-Pnative -Dmaven.javadoc.skip=true'`.
+
+##### GRIND_MAVEN_REPO
+
+There are times when the project to test is built using the `-Dmaven.repo.local=...` flag that downloads all dependencies to a location other than the default `~/.m2/repository`. 
+Grind will invoke `dependency:copy-dependencies`, and it will try to copy all dependencies from the default location. If they're not there, then it will download them again.
+
+`GRIND_MAVEN_REPO` variable will assure to use the specified maven local repository to copy all dependencies to the Grind cache.
+
+e.g. `export GRIND_MAVEN_REPO='/home/user/dependencies/repository'`
+
+**Notice**: You can use `GRIND_MAVEN_FLAGS` to specify the `-Dmaven.repo.local` flag as well, but this will override other Grind invocations that happen locally and on the Grind server, such as `mvn surefire:test`.
+This override may cause Grind to fail because the local repository will not exist on the Grind server.
 
 Common issues when onboarding
 -----------------------------
