@@ -61,12 +61,13 @@ class Isolate:
     __ISOLATE_NAME = """disttest.isolate"""
 
     def __init__(self, project_root, output_dir,
-                 include_modules=None, include_patterns=None, exclude_patterns=None,
+                 include_modules=None, exclude_modules=None, include_patterns=None, exclude_patterns=None,
                  cache_dir=None, extra_deps_file=None, maven_flags=None):
         logger.info("Using output directory " + output_dir)
         self.output_dir = output_dir
         self.maven_project = mavenproject.MavenProject(project_root,
                                                        include_modules=include_modules,
+                                                       exclude_modules=exclude_modules,
                                                        include_patterns=include_patterns,
                                                        exclude_patterns=exclude_patterns)
         self.packager = packager.Packager(self.maven_project, self.output_dir,

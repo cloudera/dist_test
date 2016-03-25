@@ -49,7 +49,7 @@ class MavenProject:
     These are used later when packaging the dependencies to run unit tests.
     """
 
-    def __init__(self, project_root, include_modules=None, include_patterns=None, exclude_patterns=None):
+    def __init__(self, project_root, include_modules=None, exclude_modules=None, include_patterns=None, exclude_patterns=None):
         # Normalize the path
         if not project_root.endswith("/"):
             project_root += "/"
@@ -61,6 +61,7 @@ class MavenProject:
         self.project_root = project_root
         self.modules = [] # All modules in the project
         self.included_modules = set() # Modules that match the include_modules filter
+        self.excluded_modules = exclude_modules
         self.__include_modules = include_modules
         # Default filters to find test classes
         self.__filters = [PotentialTestClassNameFilter(), NoAbstractClassFilter()]
@@ -105,6 +106,17 @@ class MavenProject:
             parent_module = path_to_module[parent_path]
             parent_module.submodules.append(path_to_module[mod_path])
 
+    def _filter_excluded_modules(self):
+        if self.excluded_modules is not None:
+            excluded = [m for m in self.included_modules if m.name in self.excluded_modules]
+            for m in excluded:
+                self._exclude_module_tree(m)
+
+    def _exclude_module_tree(self, module):
+        self.included_modules.remove(module)
+        for submodule in module.submodules:
+            self._exclude_module_tree(submodule)
+
     def _filter_included_modules(self):
         """Determine which of the modules are included (if specified)"""
         # If no modules were specified, they're all included
@@ -130,15 +142,18 @@ class MavenProject:
         for submodule in module.submodules:
             self._include_module_tree(submodule)
 
+    def _find_all_modules(self):
+        # Modules are directories that have a pom.xml and a target dir
+        for root, dirs, files in os.walk(self.project_root):
+            if "pom.xml" in files and "target" in dirs:
+                self.modules.append(Module(os.path.normpath(root)))
 
     def _walk(self):
         """Walk the project directory to enumerate the modules, test classes,
         and project artifacts within a MavenProject."""
 
         # Find the modules first, directories that have a pom.xml and a target dir
-        for root, dirs, files in os.walk(self.project_root):
-            if "pom.xml" in files and "target" in dirs:
-                self.modules.append(Module(os.path.normpath(root)))
+        self._find_all_modules()
 
         if len(self.modules) == 0:
             logger.error("No modules with target directories found. Did you forget to build the project?")
@@ -147,6 +162,7 @@ class MavenProject:
         self._construct_parent_child_relationships()
 
         self._filter_included_modules()
+        self._filter_excluded_modules()
 
         # For each included module, look for test classes within target dir
         for module in self.included_modules:
