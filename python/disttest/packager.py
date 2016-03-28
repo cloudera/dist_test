@@ -366,7 +366,7 @@ class Packager:
         Packager.__shell(cmd, self.__project_root)
 
         # mvn test without running tests
-        cmd = """%s --settings %s -q -Dmaven.repo.local=%s surefire:test -DskipTests"""
+        cmd = """%s --settings %s -q -Dmaven.repo.local=%s -Dmaven.artifact.threads=100 surefire:test -DskipTests"""
         cmd = cmd % (env_mvn, settings_xml, cached_m2_repo)
         Packager.__shell(cmd, self.__project_root)
 
