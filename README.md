@@ -174,6 +174,14 @@ When debugging, it's nice to run a test locally. This can be done as follows:
         $ cd /tmp/run_tha_testGvhm8E
         $ ./run_test.sh hadoop-common-project/hadoop-common/pom.xml TestNativeCodeLoader
 
+
+Comparing Jenkins job test runs
+-------------------------------
+
+When migrating an existing Jenkins job using surefire over to grind, it's nice to diff the test sets to make sure that all tests are still being run. To assist with this, you can use the `test_diff` tool provided in grind's bin directory to compare the JUnit test results of Jenkins jobs. Sample invocation:
+
+    test_diff --first http://jenkins.example.com/view/Hadoop/job/Hadoop-HDFS-2.6.0/ --first http://jenkins.example.com/view/Hadoop/job/Hadoop-YARN-2.6.0 --first http://jenkins.example.com/view/Hadoop/job/Hadoop-Common-2.6.0 --first http://jenkins.example.com/view/Hadoop/job/Hadoop-MR-2.6.0 --second http://jenkins.example.com/view/Hadoop/job/Hadoop-All-grind/ --suites
+
 Contributing to grind
 ---------------------
 
