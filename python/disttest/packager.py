@@ -210,7 +210,8 @@ class Packager:
     _MAVEN_REL_ROOT = ".m2/repository"
 
     def __init__(self, maven_project, output_root,
-                 cache_dir=None, extra_deps_file=None, ignore=None, maven_flags=None):
+                 cache_dir=None, extra_deps_file=None, ignore=None,
+                 maven_flags=None, maven_repo=None):
         self.__maven_project = maven_project
         self.__project_root = maven_project.project_root
         self.__output_root = output_root
@@ -231,6 +232,7 @@ class Packager:
         self.__test_jars = []
         self.__test_dirs = []
         self.__jars = []
+        self.__maven_repo = maven_repo
         self.__maven_flags = ""
         if maven_flags is not None:
             self.__maven_flags = maven_flags
@@ -355,8 +357,12 @@ class Packager:
         settings_xml = os.path.join(self.__cached_project_root, "settings.xml")
 
         # copy-dependencies
-        cmd = """%s --settings %s -q dependency:copy-dependencies -Dmdep.useRepositoryLayout=true -Dmdep.copyPom -DoutputDirectory=%s"""
-        cmd = cmd % (env_mvn, settings_xml, cached_m2_repo)
+        copy_deps_flags = ""
+        if self.__maven_repo is not None:
+            copy_deps_flags += "-Dmaven.repo.local=%s" % self.__maven_repo
+
+        cmd = """%s --settings %s -q dependency:copy-dependencies -Dmdep.useRepositoryLayout=true -Dmdep.copyPom -DoutputDirectory=%s %s"""
+        cmd = cmd % (env_mvn, settings_xml, cached_m2_repo, copy_deps_flags)
         Packager.__shell(cmd, self.__project_root)
 
         # mvn test without running tests
