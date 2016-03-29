@@ -31,76 +31,100 @@ from disttest import util
 logger = logging.getLogger(__name__)
 
 
-class Config:
+class BaseConfig:
     """Config class that uses ConfigParser"""
 
-    __section = "grind"
-    __required = {
+    def __init__(self, section, required, optional, location):
+        self.__section = section
+        self.__required = required
+        self.__optional = optional
+        self.location = location
+        self.config = ConfigParser.ConfigParser()
+
+    def read_config(self):
+        if os.path.isfile(self.location):
+            # Read config from file
+            self.config.read(self.location)
+            logging.info("Read config from location %s", self.location)
+        # Add dummy section if not present
+        if not self.__section in self.config.sections():
+            self.config.add_section(self.__section)
+        # Validate required options
+        for key in self.__required.keys():
+            try:
+                self.config.get(self.__section, key)
+            except ConfigParser.NoOptionError:
+                logger.error("Missing required config key %s in section %s", key, self.__section)
+        # Use defaults for optional options if not present
+        for key, value in self.__optional.iteritems():
+            try:
+                self.config.get(self.__section, key)
+            except ConfigParser.NoOptionError:
+                self.config.set(self.__section, key, value)
+
+        # Remove the DEFAULT section now that we're done parsing
+        self.config.remove_section("DEFAULT")
+
+        # Class-specific config validation
+        self.validate_config()
+
+    def validate_config(self):
+        # Overridden by subclasses
+        pass
+
+    def load_defaults(self):
+        self.config.add_section(self.__section)
+        for k,v in self.__required.iteritems():
+            self.config.set(self.__section, k, v)
+        for k,v in self.__optional.iteritems():
+            self.config.set(self.__section, k, v)
+
+    def write_config(self, outfile):
+        self.config.write(outfile)
+
+class GlobalConfig(BaseConfig):
+
+    _section = "grind"
+    _required = {
         "isolate_server": "http://a1228.halxg.cloudera.com:4242",
         "isolate_path": os.path.join("~", "dev", "go", "bin", "isolate"),
         "dist_test_client_path": os.path.join("~", "dev", "dist_test", "client.py"),
         "dist_test_master": "http://a1228.halxg.cloudera.com:8081/"
     }
-    __optional = {
+    _optional = {
         "grind_cache_dir": os.path.join("~", ".grind", "cache"),
         "grind_temp_dir": "/tmp",
     }
 
-    _default_location = os.path.join(os.environ['HOME'], ".grind", "grind.cfg")
+    default_location = os.path.join(os.environ['HOME'], ".grind", "grind.cfg")
 
     def __init__(self, location):
         if location is None:
-            self.location = Config._default_location
+            self.location = self.default_location
         else:
             self.location = location
-        self.config = ConfigParser.SafeConfigParser()
-
-    def read_config(self):
-        if not os.path.exists(self.location):
+        if not os.path.exists(self.default_location):
             raise Exception("No config file found at %s, try config --generate first?" % self.location)
         if not os.path.isfile(self.location):
             raise Exception("Config location %s is not a file" % self.location)
-        # Read config from file
-        self.config.read(self.location)
-        logging.info("Read config from location %s", self.location)
-        # Validate required options
-        for key in self.__required.keys():
-            try:
-                self.config.get(Config.__section, key)
-            except ConfigParser.NoOptionError:
-                logger.error("Missing required config key %s in section %s", key, Config.__section)
-        # Use defaults for optional options if not present
-        for key, value in self.__optional.iteritems():
-            try:
-                self.config.get(Config.__section, key)
-            except ConfigParser.NoOptionError:
-                self.config.set(Config.__section, key, value)
+
+        BaseConfig.__init__(self, self._section, self._required, self._optional, self.location)
+
+    def validate_config(self):
         # Check that paths to required binaries actually exist
         for k in ["isolate_path", "dist_test_client_path"]:
-            self.__dict__[k] = os.path.expanduser(self.config.get(Config.__section, k))
+            self.__dict__[k] = os.path.expanduser(self.config.get(self._section, k))
             if not os.path.isfile(self.__dict__[k]):
                 raise Exception("Config key %s value %s does not exist!" \
                                 % (k, self.__dict__[k]))
         # Make grind cache directory if it does not exist
         for k in ["grind_cache_dir", "grind_temp_dir"]:
-            self.__dict__[k] = os.path.expanduser(self.config.get(Config.__section, k))
+            self.__dict__[k] = os.path.expanduser(self.config.get(self._section, k))
             if not os.path.exists(self.__dict__[k]):
                 os.makedirs(self.__dict__[k])
         for k in ["isolate_server", "dist_test_master"]:
-            self.__dict__[k] = self.config.get(Config.__section, k)
+            self.__dict__[k] = self.config.get(self._section, k)
 
-        # Remove the DEFAULT section now that we're done parsing
-        self.config.remove_section("DEFAULT")
-
-    def load_defaults(self):
-        self.config.add_section(Config.__section)
-        for k,v in Config.__required.iteritems():
-            self.config.set(Config.__section, k, v)
-        for k,v in Config.__optional.iteritems():
-            self.config.set(Config.__section, k, v)
-
-    def write_config(self, outfile):
-        self.config.write(outfile)
 
 class ConfigRunner:
     """Config subcommand."""
@@ -111,7 +135,7 @@ class ConfigRunner:
 
     @staticmethod
     def add_subparser(subparsers):
-        parser = subparsers.add_parser('config', help="Grind configuration")
+        parser = subparsers.add_parser('config', help="Grind global configuration")
         parser.add_argument('-g', '--generate',
                             action='store_true',
                             help="Print a sample configuration file to stdout.")
@@ -131,12 +155,12 @@ class ConfigRunner:
             self.config.load_defaults()
             # If overwriting, prompt for confirmation first
             if self.args.write:
-                msg = "Do you want to overwrite %s with sample config file?"
+                msg = "Do you want to overwrite %s with sample config file?" % self.config.location
                 util.prompt_confirm_or_exit(msg)
                 config_dir = os.path.dirname(self.config.location)
                 if not os.path.isdir(config_dir):
                     os.makedirs(config_dir)
-                with open(config.location, "wt") as out:
+                with open(self.config.location, "wt") as out:
                     self.config.write_config(out)
                 print "Wrote sample config file to", self.config.location
             else:
@@ -146,6 +170,44 @@ class ConfigRunner:
         self.config.read_config()
         self.config.write_config(sys.stdout)
 
+
+class ProjectConfig(BaseConfig):
+
+    _section = "grind"
+    _required = {}
+    _optional = {
+        "empty_dirs": "[]",
+        "file_patterns": "[]",
+        "file_globs": "[]",
+        "artifact_archive_globs": """["**/surefire-reports/TEST-*.xml"]""",
+    }
+
+    default_location = os.path.join(os.getcwd(), ".grind_project.cfg")
+
+    def __init__(self):
+        self.location = self.default_location
+        BaseConfig.__init__(self, self._section, self._required, self._optional, self.location)
+
+    def validate_config(self):
+        # Translate the JSON-encoded lists to Python lists
+        for o in self._optional:
+            before = self.config.get(self._section, o)
+            self.config.set(self._section, o, json.loads(before))
+
+
+class ProjectConfigRunner(ConfigRunner):
+
+    @staticmethod
+    def add_subparser(subparsers):
+        parser = subparsers.add_parser('pconfig', help="Grind per-project configuration")
+        parser.add_argument('-g', '--generate',
+                            action='store_true',
+                            help="Print a sample configuration file to stdout.")
+
+        parser.add_argument('-w', '--write',
+                            action='store_true',
+                            help="Save a sample configuration file to config path." \
+                                + " Overwrites existing config file!")
 
 class CacheRunner:
     """Cache subcommand."""
@@ -305,7 +367,7 @@ class TestRunner:
                             include_patterns = self.args.include_patterns,
                             exclude_patterns = self.args.exclude_patterns,
                             cache_dir = self.config.grind_cache_dir,
-                            extra_deps_file = extra_deps_file,
+                            extra_deps_file = project_file,
                             maven_flags = maven_flags,
                             maven_repo = maven_repo)
         # Enumerate tests and package test dependencies
@@ -442,6 +504,7 @@ def main():
     subparsers = parser.add_subparsers(title='subcommands', dest='subparser_name')
     TestRunner.add_subparser(subparsers)
     ConfigRunner.add_subparser(subparsers)
+    ProjectConfigRunner.add_subparser(subparsers)
     CacheRunner.add_subparser(subparsers)
 
     # Global argument
@@ -450,14 +513,14 @@ def main():
                         help="Whether to print verbose output for debugging.")
     parser.add_argument('-c', '--config',
                         dest="config_location",
-                        help="Location of config file. Default is %s" % Config._default_location)
+                        help="Location of config file. Default is %s" % GlobalConfig.default_location)
     if len(sys.argv[1:]) == 0:
         parser.print_help()
         sys.exit(1)
 
     args = parser.parse_args(sys.argv[1:])
 
-    config = Config(args.config_location)
+    config = GlobalConfig(args.config_location)
 
     if args.verbose:
         logger.setLevel(logging.DEBUG)
@@ -466,6 +529,7 @@ def main():
     subcommands = {
         "test": test_subcommand,
         "config": config_subcommand,
+        "pconfig": project_config_subcommand,
         "cache": cache_subcommand,
     }
 
@@ -474,6 +538,10 @@ def main():
 def config_subcommand(config, args):
     c = ConfigRunner(config, args)
     c.run()
+
+def project_config_subcommand(config, args):
+    p = ConfigRunner(ProjectConfig(), args)
+    p.run()
 
 def test_subcommand(config, args):
 
