@@ -2,6 +2,7 @@ from ConfigParser import SafeConfigParser
 import errno
 import logging
 import os
+import urllib2
 
 class Config(object):
   # S3 settings
@@ -26,6 +27,8 @@ class Config(object):
   # Dist test settings
   DIST_TEST_MASTER_CONFIG = ('dist_test', 'master', "DIST_TEST_MASTER")
   DIST_TEST_JOB_PATH_CONFIG = ('dist_test', 'job_path', 'DIST_TEST_JOB_PATH')
+  DIST_TEST_USER_CONFIG = ('dist_test', 'user', 'DIST_TEST_USER')
+  DIST_TEST_PASSWORD_CONFIG = ('dist_test', 'password', 'DIST_TEST_PASSWORD')
 
   def __init__(self, path=None):
     if path is None:
@@ -38,6 +41,7 @@ class Config(object):
       "log_dir" : os.path.join(os.path.dirname(os.path.realpath(__file__)), "logs"),
       "submit_gce_metrics" : "True",
       "allowed_ip_ranges": "0.0.0.0/0",
+      "accounts": "{}",
     }
     self.config = SafeConfigParser(defaults)
     self.config.read(path)
@@ -68,7 +72,12 @@ class Config(object):
     self.DIST_TEST_JOB_PATH = self._get_with_env_override(*self.DIST_TEST_JOB_PATH_CONFIG)
     if self.DIST_TEST_JOB_PATH is None:
       self.DIST_TEST_JOB_PATH = os.path.expanduser("~/.dist-test-last-job")
+    self.DIST_TEST_USER = self._get_with_env_override(*self.DIST_TEST_USER_CONFIG)
+    self.DIST_TEST_PASSWORD = self._get_with_env_override(*self.DIST_TEST_PASSWORD_CONFIG)
+
+    # dist_test master configs (in the 'dist_test' section)
     self.DIST_TEST_ALLOWED_IP_RANGES = self.config.get('dist_test', 'allowed_ip_ranges')
+    self.ACCOUNTS = self.config.get('dist_test', 'accounts')
 
     self.log_dir = self.config.get('dist_test', 'log_dir')
     # Make the log directory if it doesn't exist
@@ -126,3 +135,17 @@ class Config(object):
       if self._get_with_env_override(*config) is None:
         raise Exception(("Missing configuration %s.%s. Please set in the config file or " +
                          "set the environment variable %s.") % config)
+
+  def configure_auth(self):
+    """
+    Configure urllib2 to pass authentication information if provided
+    in the configuration.
+    """
+    if not self.DIST_TEST_USER:
+      return
+    password_mgr = urllib2.HTTPPasswordMgrWithDefaultRealm()
+    password_mgr.add_password(None, self.DIST_TEST_MASTER,
+        self.DIST_TEST_USER, self.DIST_TEST_PASSWORD)
+    handler = urllib2.HTTPDigestAuthHandler(password_mgr)
+    opener = urllib2.build_opener(handler)
+    urllib2.install_opener(opener)

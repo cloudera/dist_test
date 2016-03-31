@@ -16,19 +16,22 @@ except:
 import StringIO
 import gzip
 import netaddr
+import random
 from collections import defaultdict
 
 from config import Config
 import dist_test
 
 TRACE_HTML = os.path.join(os.path.dirname(__file__), "trace.html")
-
 LOG = None
+
+DIGEST_AUTH_KEY = random.getrandbits(4096)
 
 class Authorize(cherrypy.Tool):
 
-  def __init__(self, allowed_ip_ranges=None):
+  def __init__(self, allowed_ip_ranges=None, accounts=None):
     self.allowed_ranges = [netaddr.IPNetwork(a) for a in allowed_ip_ranges]
+    self.accounts = accounts or {}
     self._point = "on_start_resource"
     self._name = None
     self._priority = 50
@@ -42,8 +45,11 @@ class Authorize(cherrypy.Tool):
         authorized = True
         break
 
+    # If the client is not within an allowed IP range, then use HTTP Digest auth.
     if not authorized:
-      raise cherrypy.HTTPError(403)
+      get_ha1 = cherrypy.lib.auth_digest.get_ha1_dict_plain(self.accounts)
+      return cherrypy.lib.auth_digest.digest_auth(realm='dist_test',
+          get_ha1=get_ha1, key=DIGEST_AUTH_KEY)
 
   def callable(self):
     self.check_access()
@@ -52,7 +58,9 @@ class Authorize(cherrypy.Tool):
 # also needs to be installed into the cherrypy toolbox before use
 if __name__ == "__main__":
   config = Config()
-  cherrypy.tools.authorize = Authorize(allowed_ip_ranges=config.DIST_TEST_ALLOWED_IP_RANGES.split(","))
+  cherrypy.tools.authorize = Authorize(
+      allowed_ip_ranges=config.DIST_TEST_ALLOWED_IP_RANGES.split(","),
+      accounts=json.loads(config.ACCOUNTS))
 
 class DistTestServer(object):
 

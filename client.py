@@ -375,11 +375,13 @@ def usage(argv):
     fetch   Fetch test logs and artifacts from a previous job"""
   print >>sys.stderr, "%s <command> --help may provide further info" % argv[0]
 
+
 def main(argv):
   if len(argv) < 2:
     usage(argv)
     sys.exit(1)
 
+  config.configure_auth()
   command = argv[1]
   del argv[1]
   if command == "submit":

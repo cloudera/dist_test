@@ -50,3 +50,35 @@ Do the same to run a slave:
         $ ./make-env-slave.sh
         $ source slave-env/bin/activate
         $ ./slave.py
+
+# Authentication and authorization (server side)
+
+The distributed test master has a very basic authentication and authorization system.
+The master allows read-only access from anywhere, but requires authentication to
+submit or cancel jobs. The authentication is done either by an IP whitelist or by
+a username/password pair.
+
+For example, to configure the server:
+
+        [dist_test]
+        allowed_ip_ranges=172.16.0.0/16
+        accounts={"user1":"password", "user2":"pass"}
+
+If a request originates from a host in the specified subnet, it will be allowed without
+any user-based authentication. Otherwise, HTTP Digest authentication will be employed.
+
+NOTE: slaves sometimes make requests back to the dist-test master. Thus, the slaves
+must be configured with a username and password if they do not run from within an
+allowed IP range.
+
+# Authentication and authorization (client side)
+
+If a client is not within an authorized IP range, its username and password can be
+configured as follows:
+
+        [dist_test]
+        user=foo
+        password=bar
+
+Alternatively, the `DIST_TEST_USER` and `DIST_TEST_PASSWORD` environment variables may
+be used to specify the credentials.

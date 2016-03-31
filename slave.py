@@ -335,6 +335,7 @@ def main():
   config = Config()
   LOG = logging.getLogger('dist_test.slave')
   dist_test.configure_logger(LOG, config.SLAVE_LOG)
+  config.configure_auth()
 
   LOG.info("Starting slave")
   s = Slave(config)
