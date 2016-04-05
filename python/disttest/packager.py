@@ -29,21 +29,6 @@ class ExtraDependencies:
         self.file_patterns = file_patterns
         self.file_globs = file_globs
 
-    @staticmethod
-    def read(input_file):
-        logger.info("Reading extra dependencies from %s", input_file)
-        if not os.path.isfile(input_file):
-            return None
-        with open(input_file, "r") as o:
-            d = json.load(o)
-            keys = ["empty_dirs", "file_patterns", "file_globs"]
-            values = [[]] * len(keys)
-            for i in range(len(keys)):
-                if keys[i] in d.keys():
-                    values[i] = d[keys[i]]
-
-            return ExtraDependencies(*values)
-
 class Manifest:
     """Identifies a Maven project based on the git branch.
 
@@ -94,7 +79,7 @@ class Manifest:
             return pickle.load(o)
 
     @staticmethod
-    def build_from_project(project_root, extra_deps_file):
+    def build_from_project(project_root):
         retcode = subprocess.call("git show-ref --quiet", shell=True, cwd=project_root)
         if retcode != 0:
             raise Exception("Directory %s is not a git repository" % project_root)
@@ -115,8 +100,6 @@ class Manifest:
             git_branch = git_branch[:-1]
         # Hash the deps file to look for changes
         deps_checksum = None
-        if extra_deps_file is not None and os.path.isfile(extra_deps_file):
-            deps_checksum = hashlib.md5(extra_deps_file).digest()
         return Manifest(grind_git_hash, os.path.normpath(project_root), git_branch, git_hash, datetime.datetime.now(), deps_checksum)
 
 class CacheManager:
@@ -210,7 +193,7 @@ class Packager:
     _MAVEN_REL_ROOT = ".m2/repository"
 
     def __init__(self, maven_project, output_root,
-                 cache_dir=None, extra_deps_file=None, ignore=None,
+                 cache_dir=None, extra_deps=None, ignore=None,
                  maven_flags=None, maven_repo=None):
         self.__maven_project = maven_project
         self.__project_root = maven_project.project_root
@@ -220,10 +203,9 @@ class Packager:
             self.__cache_dir = tempfile.mkdtemp(prefix="grindcache.")
             logger.info("No cache dir specified, using temp directory %s instead", self.__cache_dir)
         self.__cached_project_root = self.__cache_dir + self.__project_root
-        self.__extra_deps_file = extra_deps_file
         self.__extra_deps = ExtraDependencies([], [], [])
-        if extra_deps_file is not None:
-            self.__extra_deps = ExtraDependencies.read(extra_deps_file)
+        if extra_deps is not None:
+            self.__extra_deps = extra_deps
 
         if ignore is None:
             self.__ignore = []
@@ -238,7 +220,7 @@ class Packager:
             self.__maven_flags = maven_flags
 
         # Pass ourself in to build Manifest
-        self.__manifest = Manifest.build_from_project(self.__project_root, self.__extra_deps_file)
+        self.__manifest = Manifest.build_from_project(self.__project_root)
 
     @staticmethod
     def __mkdirs_recursive(path):
