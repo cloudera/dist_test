@@ -273,7 +273,6 @@ class DistTestServer(object):
     result['total_groups'] = len(task_groups)
     result['flaky_groups'] = len([1 for g in task_groups.values() if g.is_flaky])
     result['failed_groups'] = len([1 for g in task_groups.values() if g.is_failed])
-    result['failed_groups'] = len([1 for g in task_groups.values() if g.is_failed])
     result['succeeded_groups'] = len([1 for g in task_groups.values() if g.is_succeeded])
     result['finished_groups'] = len([1 for g in task_groups.values() if g.is_finished])
 

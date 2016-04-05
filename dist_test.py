@@ -73,8 +73,11 @@ class TaskGroup(object):
   def __init__(self, tasks):
     self.tasks = tasks
     # Compute group status
+    # Reminder:
+    #   any([]) => False
+    #   all([]) => True
     failed = [t['status'] is not None and t['status'] != 0 for t in tasks]
-    all_failed = all(failed)
+    all_failed = all(failed) and len(failed) > 0
     any_failed = any(failed)
     has_retries_remaining = all([t['attempt'] != t['max_retries'] for t in tasks])
     any_succeeded = any([t['status'] == 0 for t in tasks])
