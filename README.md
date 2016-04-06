@@ -66,10 +66,10 @@ Example usage
 
 See `grind test --help` for more advanced usage instructions.
 
-Configuration
+Global Configuration
 -------------
 
-`grind config` generates a sample config file, with the following keys:
+The `grind config` command lets you display your current configuration, or generate a new sample config file. This config file supports the following keys:
 
 * `isolate_server`: The URL of the isolate server where artifacts will be uploaded.
 * `dist_test_client_path`: The path to `client.py` within your checked out `dist_test` repository.
@@ -77,17 +77,9 @@ Configuration
 * `grind_temp_dir`: Where grind will keep per-invocation data. This should be on the same hard disk as the `grind_cache_dir` to enable hardlinking.
 * `grind_cache_dir`: Where grind will cached per-project dependency sets. This greatly speeds up repeated grind invocations. This should be on the same hard disk as the `grind_cache_dir` to enable hardlinking.
 
-Grind also supports specifying additional per-project dependencies that need to be tracked, relative to module `target` folders.
-This is done in a `.grind_deps` JSON file stored in the project root.
-As an example, Hadoop creates some empty directories for tests to use which need to be present in the test environment.
-Hadoop also builds native libraries which are not included in the JAR, but are also required for test execution.
+Running `grind config` will print your current config settings.
 
-        {
-            "empty_dirs": ["test/data", "test-dir", "log"],
-            "file_patterns": ["*.so"]
-        }
-
-Richer support for specifying these additional dependencies will be added on demand.
+To make it easier to get started, `grind config --generate --write` can be used to write a new default config to the default location (`$HOME/.grind/grind.cfg`).
 
 ### Environment variables
 
@@ -110,6 +102,26 @@ e.g. `export GRIND_MAVEN_REPO='/home/user/dependencies/repository'`
 
 **Notice**: You can use `GRIND_MAVEN_FLAGS` to specify the `-Dmaven.repo.local` flag as well, but this will override other Grind invocations that happen locally and on the Grind server, such as `mvn surefire:test`.
 This override may cause Grind to fail because the local repository will not exist on the Grind server.
+
+Per-project Configuration
+------------
+
+`grind pconfig` is similar to `config`, but used to specify per-project configuration. It has the following keys:
+
+* `empty_dirs`: Specifies empty directories to be created in each `target` directory at test runtime. Some tests expect these directories to exist.
+* `file_globs`: Specifies additional test dependencies via a comma-delimited list of Unix-style path globs. These globs are interpreted by Python's [glob.iglob](https://docs.python.org/2/library/glob.html#glob.iglob).
+* `file_patterns`: Specifies additional test dependencies via a comma-delimited list of filename patterns. These patterns are interpreted by Python's [fnmatch.fnmatch](https://docs.python.org/2/library/fnmatch.html#fnmatch.fnmatch).
+* `artifact_archive_globs`: Specifies test output to upload after a test has run, via comma-delimited Python glob.iglob glob strings. By default, this matches Surefire's test XML output (`**/surefire-reports/TEST-*.xml`), but it can be modified to also upload additional logs.
+
+Like the `grind config` command, `pconfig` will generate a default config to the default location (`./grind_project.cfg`) when invoked via `grind pconfig --generate --write`.
+
+As an example, here is Hadoop's `.grind_project.cfg`. Hadoop tests expect a few extra directories to be created, and we also need to upload the native libraries that are not picked up by the Maven Dependency Plugin.
+
+        [grind]
+        empty_dirs = ["test/data", "test-dir", "log"]
+        file_globs = []
+        file_patterns = ["*.so"]
+        artifact_archive_globs = ["**/surefire-reports/TEST-*.xml"]
 
 Common issues when onboarding
 -----------------------------
