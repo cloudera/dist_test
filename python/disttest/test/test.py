@@ -70,9 +70,9 @@ class TestMavenProject(unittest.TestCase):
         # list of (([includes], [excludes]), [results])
         expected = [
             ((["*"], None),
-                ["TestLinkedListReversal", "TestFailSometimes", "TestHelloWorld", "AppTest"]),
+                ["TestLinkedListReversal", "TestFailAlways", "TestFailSometimes", "TestHelloWorld", "AppTest"]),
             ((["Test*"], None),
-                ["TestLinkedListReversal", "TestFailSometimes", "TestHelloWorld"]),
+                ["TestLinkedListReversal", "TestFailAlways", "TestFailSometimes", "TestHelloWorld"]),
             ((["*Linked*"], None),
                 ["TestLinkedListReversal"]),
             ((["*Test"], None),
@@ -80,10 +80,10 @@ class TestMavenProject(unittest.TestCase):
             ((None, ["Test*"]),
                 ["AppTest"]),
             ((None, ["AppTest"]),
-                ["TestLinkedListReversal", "TestFailSometimes", "TestHelloWorld"]),
+                ["TestLinkedListReversal", "TestFailAlways", "TestFailSometimes", "TestHelloWorld"]),
             ((None, ["*"]),
                 []),
-            ((["Test*"], ["*Reversal", "*Sometimes"]),
+            ((["Test*"], ["*Reversal", "*Sometimes", "*Fail*"]),
                 ["TestHelloWorld"]),
             ((["Test*"], ["Test*"]),
                 []),
@@ -183,14 +183,9 @@ class TestIsolate(unittest.TestCase):
     def test_isolate(self):
         # Write a file specifying the extra dependencies
         patterns = ["*.properties"]
-        deps = {
-                "file_patterns": patterns
-        }
-        dep_file = os.path.join(self.output_dir, "deps")
-        with open(dep_file, "w") as o:
-            json.dump(deps, o)
+        deps = packager.ExtraDependencies([], patterns, [])
         i = isolate.Isolate(TEST_PROJECT_PATH, self.output_dir,
-                            extra_deps_file=dep_file)
+                            extra_deps=deps)
         i.package()
         i.generate()
         num_files = 0
