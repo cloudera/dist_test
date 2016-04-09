@@ -25,6 +25,7 @@ import subprocess
 import sys
 import threading
 import time
+import contextlib
 import zipfile
 
 from config import Config
@@ -169,7 +170,7 @@ class Slave(object):
                + "uploading archive with error message instead.",
               task.task.get_id(), total_size, max_size)
       archive_buffer = cStringIO.StringIO()
-      with zipfile.ZipFile(archive_buffer, "w") as myzip:
+      with contextlib.closing(zipfile.ZipFile(archive_buffer , "w")) as myzip:
         myzip.writestr("_ARCHIVE_TOO_BIG_",
                        "Size of matched uncompressed test artifacts exceeded maximum size" \
                        + "(%d bytes > %d bytes)!" % (total_size, max_size))
@@ -177,7 +178,7 @@ class Slave(object):
 
     # Write out the archive
     archive_buffer = cStringIO.StringIO()
-    with zipfile.ZipFile(archive_buffer, "w", zipfile.ZIP_DEFLATED) as myzip:
+    with contextlib.closing(zipfile.ZipFile(archive_buffer , "w", zipfile.ZIP_DEFLATED)) as myzip:
       for m in all_matched:
         arcname = os.path.relpath(m, test_dir)
         while arcname.startswith("/"):
