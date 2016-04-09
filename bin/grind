@@ -42,7 +42,14 @@ class BaseConfig:
         self.location = location
         self.config = ConfigParser.ConfigParser()
 
-    def read_config(self):
+    def read_config(self, required=False):
+        if required:
+            if not os.path.exists(self.location):
+                raise Exception("No config file found at %s, try config --generate first?" % self.location)
+            if not os.path.isfile(self.location):
+                raise Exception("Config location %s is not a file" % self.location)
+        else:
+            logger.info("No %s configuration file found, using defaults." % self.__class__.__name__)
         if os.path.isfile(self.location):
             # Read config from file
             self.config.read(self.location)
@@ -87,10 +94,10 @@ class GlobalConfig(BaseConfig):
 
     _section = "grind"
     _required = {
-        "isolate_server": "http://a1228.halxg.cloudera.com:4242",
+        "isolate_server": "http://isolate.cloudera.org:4242",
         "isolate_path": os.path.join("~", "dev", "go", "bin", "isolate"),
         "dist_test_client_path": os.path.join("~", "dev", "dist_test", "client.py"),
-        "dist_test_master": "http://a1228.halxg.cloudera.com:8081/"
+        "dist_test_master": "http://dist-test.cloudera.org:80/"
     }
     _optional = {
         "grind_cache_dir": os.path.join("~", ".grind", "cache"),
@@ -104,10 +111,6 @@ class GlobalConfig(BaseConfig):
             self.location = self.default_location
         else:
             self.location = location
-        if not os.path.exists(self.default_location):
-            raise Exception("No config file found at %s, try config --generate first?" % self.location)
-        if not os.path.isfile(self.location):
-            raise Exception("Config location %s is not a file" % self.location)
 
         BaseConfig.__init__(self, self._section, self._required, self._optional, self.location)
 
@@ -133,6 +136,7 @@ class ConfigRunner:
     def __init__(self, config, args):
         self.config = config
         self.args = args
+        self.required = True
 
     @staticmethod
     def add_subparser(subparsers):
@@ -171,7 +175,7 @@ class ConfigRunner:
                 self.config.write_config(sys.stdout)
             return
         # Else, load and print the found config file
-        self.config.read_config()
+        self.config.read_config(required=self.required)
         self.config.write_config(sys.stdout)
 
 
@@ -202,6 +206,11 @@ class ProjectConfig(BaseConfig):
 
 
 class ProjectConfigRunner(ConfigRunner):
+
+    def __init__(self, config, args):
+        self.config = config
+        self.args = args
+        self.required = False
 
     @staticmethod
     def add_subparser(subparsers):
@@ -546,7 +555,7 @@ def config_subcommand(config, args):
     c.run()
 
 def project_config_subcommand(config, args):
-    p = ConfigRunner(ProjectConfig(), args)
+    p = ProjectConfigRunner(ProjectConfig(), args)
     p.run()
 
 def test_subcommand(config, args):
