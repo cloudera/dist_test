@@ -194,7 +194,7 @@ class Packager:
 
     def __init__(self, maven_project, output_root,
                  cache_dir=None, extra_deps=None, ignore=None,
-                 maven_flags=None, maven_repo=None):
+                 maven_flags=None, maven_repo=None, verbose=False):
         self.__maven_project = maven_project
         self.__project_root = maven_project.project_root
         self.__output_root = output_root
@@ -218,6 +218,8 @@ class Packager:
         self.__maven_flags = ""
         if maven_flags is not None:
             self.__maven_flags = maven_flags
+
+        self.__verbose = verbose
 
         # Pass ourself in to build Manifest
         self.__manifest = Manifest.build_from_project(self.__project_root)
@@ -343,13 +345,17 @@ class Packager:
         if self.__maven_repo is not None:
             copy_deps_flags += "-Dmaven.repo.local=%s" % self.__maven_repo
 
-        cmd = """%s --settings %s -q dependency:copy-dependencies -Dmdep.useRepositoryLayout=true -Dmdep.copyPom -DoutputDirectory=%s %s"""
-        cmd = cmd % (env_mvn, settings_xml, cached_m2_repo, copy_deps_flags)
+        quietFlag = "-q"
+        if self.__verbose:
+            quietFlag = ""
+
+        cmd = """%s --settings %s %s dependency:copy-dependencies -Dmdep.useRepositoryLayout=true -Dmdep.copyPom -DoutputDirectory=%s %s"""
+        cmd = cmd % (env_mvn, settings_xml, quietFlag, cached_m2_repo, copy_deps_flags)
         Packager.__shell(cmd, self.__project_root)
 
         # mvn test without running tests
-        cmd = """%s --settings %s -q -Dmaven.repo.local=%s -Dmaven.artifact.threads=100 surefire:test -DskipTests"""
-        cmd = cmd % (env_mvn, settings_xml, cached_m2_repo)
+        cmd = """%s --settings %s %s -Dmaven.repo.local=%s -Dmaven.artifact.threads=100 surefire:test -DskipTests"""
+        cmd = cmd % (env_mvn, settings_xml, quietFlag, cached_m2_repo)
         Packager.__shell(cmd, self.__project_root)
 
         # TODO: add support for specifying additional dependencies not caught by above
