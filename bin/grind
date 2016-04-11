@@ -19,6 +19,7 @@ import logging
 import os
 import shlex
 import shutil
+import StringIO
 import subprocess
 import sys
 import tempfile
@@ -192,17 +193,30 @@ class ProjectConfig(BaseConfig):
 
     default_location = os.path.join(os.getcwd(), ".grind_project.cfg")
 
+    original_config = None
+
     def __init__(self):
         self.location = self.default_location
         BaseConfig.__init__(self, self._section, self._required, self._optional, self.location)
 
     def validate_config(self):
+        # Save the original config
+        config_string = StringIO.StringIO()
+        self.config.write(config_string)
+        config_string.seek(0)
+        self.original_config = ConfigParser.ConfigParser()
+        self.original_config.readfp(config_string)
+
         # Translate the JSON-encoded lists to Python lists
         for o in self._optional:
             before = self.config.get(self._section, o)
             decoded = json.loads(before)
             self.config.set(self._section, o, decoded)
             self.__dict__[o] = decoded
+
+    def write_config(self, outfile):
+        # Write the original config
+        self.original_config.write(outfile)
 
 
 class ProjectConfigRunner(ConfigRunner):
