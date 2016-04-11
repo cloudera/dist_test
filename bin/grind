@@ -103,6 +103,8 @@ class GlobalConfig(BaseConfig):
     _optional = {
         "grind_cache_dir": os.path.join("~", ".grind", "cache"),
         "grind_temp_dir": "/tmp",
+        "dist_test_user": "",
+        "dist_test_password": "",
     }
 
     default_location = os.path.join(os.environ['HOME'], ".grind", "grind.cfg")
@@ -127,7 +129,7 @@ class GlobalConfig(BaseConfig):
             self.__dict__[k] = os.path.expanduser(self.config.get(self._section, k))
             if not os.path.exists(self.__dict__[k]):
                 os.makedirs(self.__dict__[k])
-        for k in ["isolate_server", "dist_test_master"]:
+        for k in ["isolate_server", "dist_test_master", "dist_test_user", "dist_test_password"]:
             self.__dict__[k] = self.config.get(self._section, k)
 
 
@@ -408,6 +410,10 @@ class TestRunner:
         isolate_env = os.environ
         isolate_env["ISOLATE_SERVER"] = self.config.isolate_server
         isolate_env["DIST_TEST_MASTER"] = self.config.dist_test_master
+
+        # Get user/pass from environment, or failing that the config file.
+        isolate_env["DIST_TEST_USER"] = os.environ.get('DIST_TEST_USER') or self.config.dist_test_user
+        isolate_env["DIST_TEST_PASSWORD"] = os.environ.get('DIST_TEST_PASSWORD') or self.config.dist_test_password
 
         if len(i.isolated_files) == 0:
             logger.error("No tests found for project %s!", self.project_dir)

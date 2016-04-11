@@ -73,6 +73,8 @@ The `grind config` command lets you display your current configuration, or gener
 
 * `isolate_server`: The URL of the isolate server where artifacts will be uploaded.
 * `dist_test_client_path`: The path to `client.py` within your checked out `dist_test` repository.
+* `dist_test_user`: Your username, if the dist test server requires authentication. This can be overridden by the `DIST_TEST_USER` environment variable.
+* `dist_test_password`: Your password, if the dist test server requires authentication. This can be overridden by the `DIST_TEST_PASSWROD` environment variable.
 * `isolate_path`: Path to the isolate binary, this is used to generate the isolate task descriptions
 * `grind_temp_dir`: Where grind will keep per-invocation data. This should be on the same hard disk as the `grind_cache_dir` to enable hardlinking.
 * `grind_cache_dir`: Where grind will cached per-project dependency sets. This greatly speeds up repeated grind invocations. This should be on the same hard disk as the `grind_cache_dir` to enable hardlinking.
@@ -102,6 +104,10 @@ e.g. `export GRIND_MAVEN_REPO='/home/user/dependencies/repository'`
 
 **Notice**: You can use `GRIND_MAVEN_FLAGS` to specify the `-Dmaven.repo.local` flag as well, but this will override other Grind invocations that happen locally and on the Grind server, such as `mvn surefire:test`.
 This override may cause Grind to fail because the local repository will not exist on the Grind server.
+
+##### DIST_TEST_USER and DIST_TEST_PASSWORD
+
+As mentioned above, grind respects the `DIST_TEST_USER` and `DIST_TEST_PASSWORD` environment variables.
 
 Per-project Configuration
 ------------
