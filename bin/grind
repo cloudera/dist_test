@@ -44,13 +44,11 @@ class BaseConfig:
         self.config = ConfigParser.ConfigParser()
 
     def read_config(self, required=False):
-        if required:
-            if not os.path.exists(self.location):
+        if not os.path.isfile(self.location):
+            if required:
                 raise Exception("No config file found at %s, try config --generate first?" % self.location)
-            if not os.path.isfile(self.location):
-                raise Exception("Config location %s is not a file" % self.location)
-        else:
-            logger.info("No %s configuration file found, using defaults." % self.__class__.__name__)
+            else:
+                logger.info("No %s configuration file found, using defaults." % self.__class__.__name__)
         if os.path.isfile(self.location):
             # Read config from file
             self.config.read(self.location)
