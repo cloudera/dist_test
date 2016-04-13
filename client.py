@@ -91,6 +91,23 @@ def get_return_code(result):
   return retcode
 
 
+def urlopen_with_retry(*args, **kwargs):
+  max_attempts = 10
+  sleep_time = 5
+  attempt = 0
+
+  while True:
+    try:
+      return urllib2.urlopen(*args, **kwargs)
+    except:
+      if attempt == max_attempts:
+          raise
+      attempt += 1
+      LOG.info("Failed to contact server, will retry in %d seconds (attempt %d of %d)",
+               sleep_time, attempt, max_attempts)
+      time.sleep(sleep_time)
+
+
 def do_watch_results(job_id):
   watch_url = TEST_MASTER + "/job?" + urllib.urlencode([("job_id", job_id)])
   LOG.info("Watch your results at %s", watch_url)
@@ -101,7 +118,7 @@ def do_watch_results(job_id):
   first = True
   previous_result = None
   while True:
-    result_str = urllib2.urlopen(url).read()
+    result_str = urlopen_with_retry(url).read()
     result = json.loads(result_str)
 
     retcode = get_return_code(result)
@@ -138,8 +155,7 @@ def submit_job_json(job_prefix, job_json):
   form_data = urllib.urlencode({'job_id': job_id, 'job_json': job_json})
   url = TEST_MASTER + "/submit_job"
   LOG.info("Submitting job to " + url)
-  result_str = urllib2.urlopen(url,
-                               data=form_data).read()
+  result_str = urlopen_with_retry(url, data=form_data).read()
   result = json.loads(result_str)
   if result.get('status') != 'SUCCESS':
     sys.err.println("Unable to submit job: %s" % repr(result))
@@ -202,7 +218,7 @@ def fetch_tasks(job_id, status=None):
   if status is not None:
     params["status"] = status
   url = TEST_MASTER + "/tasks?" + urllib.urlencode(params)
-  results_str = urllib2.urlopen(url).read()
+  results_str = urlopen_with_retry(url).read()
   return json.loads(results_str)
 
 def safe_name(s):
@@ -293,7 +309,7 @@ def _fetch(job_id, out_dir, artifacts=False, logs=False, failed_only=False, **kw
     _parallel_extract(artifact_paths, out_dir)
 
 def _download(link, path):
-  max_attempts = 3
+  max_attempts = 10
   for x in range(max_attempts):
     try:
       if not os.path.exists(path):
@@ -308,6 +324,7 @@ def _download(link, path):
         os.remove(path)
       if x < max_attempts - 1:
         LOG.info("Retrying download of %s to %s" % (link, path))
+        time.sleep(5)
       else:
         raise
 
@@ -363,7 +380,7 @@ def _parallel_extract(paths, out_dir):
 def cancel_job(argv):
   job_id = get_job_id_from_args("cancel", argv)
   url = TEST_MASTER + "/cancel_job?" + urllib.urlencode([("job_id", job_id)])
-  result_str = urllib2.urlopen(url).read()
+  result_str = urlopen_with_retry(url).read()
   LOG.info("Cancellation: %s" % result_str)
 
 def usage(argv):
