@@ -32,7 +32,7 @@ class Authorize(cherrypy.Tool):
   def __init__(self, allowed_ip_ranges=None, accounts=None):
     self.allowed_ranges = [netaddr.IPNetwork(a) for a in allowed_ip_ranges]
     self.accounts = accounts or {}
-    self._point = "on_start_resource"
+    self._point = "before_handler"
     self._name = None
     self._priority = 50
     self._setargs()
