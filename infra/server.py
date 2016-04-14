@@ -283,7 +283,7 @@ class DistTestServer(object):
     result['running_tasks'] = len([1 for t in tasks if t['status'] is None])
     result['retried_tasks'] = len([1 for t in tasks if t['attempt'] > 0])
     result['timedout_tasks'] = len([1 for t in tasks if t['status'] == -9])
-    result['failed_tasks'] = len([1 for t in tasks if t['status'] != 0])
+    result['failed_tasks'] = len([1 for t in tasks if t['status'] is not None and t['status'] != 0])
     result['succeeded_tasks'] = len([1 for t in tasks if t['status'] == 0])
 
     # Group-level status information
