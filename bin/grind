@@ -398,7 +398,8 @@ class TestRunner:
                             cache_dir = self.config.grind_cache_dir,
                             extra_deps = extra_deps,
                             maven_flags = maven_flags,
-                            maven_repo = maven_repo)
+                            maven_repo = maven_repo,
+                            verbose = self.args.verbose)
         # Enumerate tests and package test dependencies
         i.package()
         # Generate per-test task descriptions
