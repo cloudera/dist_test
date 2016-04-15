@@ -345,17 +345,17 @@ class Packager:
         if self.__maven_repo is not None:
             copy_deps_flags += "-Dmaven.repo.local=%s" % self.__maven_repo
 
-        quietFlag = "-q"
+        quiet_flag = "-q"
         if self.__verbose:
-            quietFlag = ""
+            quiet_flag = ""
 
         cmd = """%s --settings %s %s dependency:copy-dependencies -Dmdep.useRepositoryLayout=true -Dmdep.copyPom -DoutputDirectory=%s %s"""
-        cmd = cmd % (env_mvn, settings_xml, quietFlag, cached_m2_repo, copy_deps_flags)
+        cmd = cmd % (env_mvn, settings_xml, quiet_flag, cached_m2_repo, copy_deps_flags)
         Packager.__shell(cmd, self.__project_root)
 
         # mvn test without running tests
         cmd = """%s --settings %s %s -Dmaven.repo.local=%s -Dmaven.artifact.threads=100 surefire:test -DskipTests"""
-        cmd = cmd % (env_mvn, settings_xml, quietFlag, cached_m2_repo)
+        cmd = cmd % (env_mvn, settings_xml, quiet_flag, cached_m2_repo)
         Packager.__shell(cmd, self.__project_root)
 
         # TODO: add support for specifying additional dependencies not caught by above
