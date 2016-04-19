@@ -1,0 +1,75 @@
+#!/usr/bin/python2.7
+import os
+import sys
+import json
+import argparse
+import requests
+
+def main():
+    parser = argparse.ArgumentParser(description="Compare the set of tests run by jenkins jobs.", prog="parse.py")
+    parser.add_argument("--first", action="append", required=True,
+                        help="First Jenkins job URL. Can be specified multiple times to aggregate.")
+    parser.add_argument("--second", action="append", required=True,
+                        help="Second Jenkins job URL. Can be specified multiple times to aggregate.")
+    parser.add_argument("--suites", action="store_true",
+                        help="Diff tests suites rather than individual test cases.")
+
+    if len(sys.argv) < 2:
+        parser.print_help()
+        sys.exit(1)
+
+    args = parser.parse_args()
+
+    first_set = set()
+    second_set = set()
+    for job_url in args.first:
+        first_set = first_set | get_tests_from_job_url(job_url, args)
+    for job_url in args.second:
+        second_set = second_set | get_tests_from_job_url(job_url, args)
+
+    first_not_second = first_set - second_set
+    second_not_first = second_set - first_set
+
+    if len(first_not_second) == 0 and len(second_not_first) == 0:
+        print "First and second test sets are identical"
+        sys.exit(0)
+
+    if len(first_not_second) > 0:
+        print "Tests in (%s) and not (%s):" % (", ".join(args.first), ", ".join(args.second))
+        for test in sorted(first_not_second):
+            print "\t", test
+
+    if len(second_not_first) > 0:
+        print "Tests in (%s) and not (%s):" % (", ".join(args.second), ", ".join(args.first))
+        for test in sorted(second_not_first):
+            print "\t", test
+    sys.exit(2)
+
+
+def get_tests_from_job_url(job_url, args):
+    """Returns a set of test cases that were run in the latest build of a Jenkins job."""
+    r = requests.get(job_url + "/api/json")
+    resp = r.json()
+    if len(resp["builds"]) == 0:
+        print "No builds for job", jenkins_job
+        sys.exit(1)
+
+    latest_build = resp["builds"][0]["url"]
+
+    r = requests.get(latest_build + "/testReport/api/json")
+    tests = r.json()
+
+    # Print the test suite, case, status
+    ret = set()
+    for suite in tests["suites"]:
+        for case in suite["cases"]:
+            t = None
+            if args.suites:
+                t = "%s" % (case["className"],)
+            else:
+                t = "%s#%s" % (case["className"], case["name"])
+            ret.add(t)
+    return ret
+
+if __name__ == "__main__":
+    main()

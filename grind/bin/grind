@@ -1,0 +1,593 @@
+#!/usr/bin/env python
+
+# grind
+#
+# This is the CLI that exposes the functionality of the "disttest" module that
+# is part of the grind repository. It also stitches together the functionality
+# that lives in "luci" (a project from Chromium based on the former "isolate"
+# project that packages tests so they can be run standalone) and also
+# "dist_test" (a simple client/server build here at Cloudera for executing
+# isolate tasks).
+#
+# disttest is where most of the interesting implementation lives.
+# grind is mainly argument parsing and configuration management.
+
+import argparse
+import ConfigParser
+import json
+import logging
+import os
+import shlex
+import shutil
+import StringIO
+import subprocess
+import sys
+import tempfile
+
+sys.path = [os.path.join(os.path.realpath(os.path.dirname(__file__)), "../python")] + sys.path
+from disttest import merge_xunit
+from disttest import isolate
+from disttest import packager
+from disttest import util
+
+logger = logging.getLogger(__name__)
+
+
+class BaseConfig:
+    """Config class that uses ConfigParser"""
+
+    def __init__(self, section, required, optional, location):
+        self.__section = section
+        self.__required = required
+        self.__optional = optional
+        self.location = location
+        self.config = ConfigParser.ConfigParser()
+
+    def read_config(self, required=False):
+        if not os.path.isfile(self.location):
+            if required:
+                raise Exception("No config file found at %s, try config --generate first?" % self.location)
+            else:
+                logger.info("No %s configuration file found, using defaults." % self.__class__.__name__)
+        if os.path.isfile(self.location):
+            # Read config from file
+            self.config.read(self.location)
+            logging.info("Read config from location %s", self.location)
+        # Add dummy section if not present
+        if not self.__section in self.config.sections():
+            self.config.add_section(self.__section)
+        # Validate required options
+        for key in self.__required.keys():
+            try:
+                self.config.get(self.__section, key)
+            except ConfigParser.NoOptionError:
+                logger.error("Missing required config key %s in section %s", key, self.__section)
+        # Use defaults for optional options if not present
+        for key, value in self.__optional.iteritems():
+            try:
+                self.config.get(self.__section, key)
+            except ConfigParser.NoOptionError:
+                self.config.set(self.__section, key, value)
+
+        # Remove the DEFAULT section now that we're done parsing
+        self.config.remove_section("DEFAULT")
+
+        # Class-specific config validation
+        self.validate_config()
+
+    def validate_config(self):
+        # Overridden by subclasses
+        pass
+
+    def load_defaults(self):
+        self.config.add_section(self.__section)
+        for k,v in self.__required.iteritems():
+            self.config.set(self.__section, k, v)
+        for k,v in self.__optional.iteritems():
+            self.config.set(self.__section, k, v)
+
+    def write_config(self, outfile):
+        self.config.write(outfile)
+
+class GlobalConfig(BaseConfig):
+
+    _section = "grind"
+    _required = {
+        "isolate_server": "http://isolate.cloudera.org:4242",
+        "isolate_path": os.path.join("~", "dev", "go", "bin", "isolate"),
+        "dist_test_client_path": os.path.join("~", "dev", "dist_test", "client.py"),
+        "dist_test_master": "http://dist-test.cloudera.org:80/"
+    }
+    _optional = {
+        "grind_cache_dir": os.path.join("~", ".grind", "cache"),
+        "grind_temp_dir": "/tmp",
+        "dist_test_user": "",
+        "dist_test_password": "",
+    }
+
+    default_location = os.path.join(os.environ['HOME'], ".grind", "grind.cfg")
+
+    def __init__(self, location):
+        if location is None:
+            self.location = self.default_location
+        else:
+            self.location = location
+
+        BaseConfig.__init__(self, self._section, self._required, self._optional, self.location)
+
+    def validate_config(self):
+        # Check that paths to required binaries actually exist
+        for k in ["isolate_path", "dist_test_client_path"]:
+            self.__dict__[k] = os.path.expanduser(self.config.get(self._section, k))
+            if not os.path.isfile(self.__dict__[k]):
+                raise Exception("Config key %s value %s does not exist!" \
+                                % (k, self.__dict__[k]))
+        # Make grind cache directory if it does not exist
+        for k in ["grind_cache_dir", "grind_temp_dir"]:
+            self.__dict__[k] = os.path.expanduser(self.config.get(self._section, k))
+            if not os.path.exists(self.__dict__[k]):
+                os.makedirs(self.__dict__[k])
+        for k in ["isolate_server", "dist_test_master", "dist_test_user", "dist_test_password"]:
+            self.__dict__[k] = self.config.get(self._section, k)
+
+
+class ConfigRunner:
+    """Config subcommand."""
+
+    def __init__(self, config, args):
+        self.config = config
+        self.args = args
+        self.required = True
+
+    @staticmethod
+    def add_subparser(subparsers):
+        parser = subparsers.add_parser('config', help="Grind global configuration")
+        parser.add_argument('-g', '--generate',
+                            action='store_true',
+                            help="Print a sample configuration file to stdout.")
+
+        parser.add_argument('-w', '--write',
+                            action='store_true',
+                            help="Save a sample configuration file to config path." \
+                                + " Overwrites existing config file!")
+
+    def run(self):
+        if self.args.write and not self.args.generate:
+            print "--write requires --generate"
+            sys.exit(1)
+
+        # If generate, print the default config
+        if self.args.generate:
+            self.config.load_defaults()
+            # If overwriting, prompt for confirmation first
+            if self.args.write:
+                op = "write"
+                if os.path.exists(self.config.location):
+                    op = "OVERWRITE"
+                msg = "Do you want to %s sample config file to %s?" % (op, self.config.location)
+                util.prompt_confirm_or_exit(msg)
+                config_dir = os.path.dirname(self.config.location)
+                if not os.path.isdir(config_dir):
+                    os.makedirs(config_dir)
+                with open(self.config.location, "wt") as out:
+                    self.config.write_config(out)
+                print "Wrote sample config file to", self.config.location
+            else:
+                self.config.write_config(sys.stdout)
+            return
+        # Else, load and print the found config file
+        self.config.read_config(required=self.required)
+        self.config.write_config(sys.stdout)
+
+
+class ProjectConfig(BaseConfig):
+
+    _section = "grind"
+    _required = {}
+    _optional = {
+        "empty_dirs": "[]",
+        "file_patterns": "[]",
+        "file_globs": "[]",
+        "artifact_archive_globs": """["**/surefire-reports/TEST-*.xml"]""",
+    }
+
+    default_location = os.path.join(os.getcwd(), ".grind_project.cfg")
+
+    original_config = None
+
+    def __init__(self):
+        self.location = self.default_location
+        BaseConfig.__init__(self, self._section, self._required, self._optional, self.location)
+
+    def validate_config(self):
+        # Save the original config
+        config_string = StringIO.StringIO()
+        self.config.write(config_string)
+        config_string.seek(0)
+        self.original_config = ConfigParser.ConfigParser()
+        self.original_config.readfp(config_string)
+
+        # Translate the JSON-encoded lists to Python lists
+        for o in self._optional:
+            before = self.config.get(self._section, o)
+            decoded = json.loads(before)
+            self.config.set(self._section, o, decoded)
+            self.__dict__[o] = decoded
+
+    def write_config(self, outfile):
+        # Write the original config
+        self.original_config.write(outfile)
+
+
+class ProjectConfigRunner(ConfigRunner):
+
+    def __init__(self, config, args):
+        self.config = config
+        self.args = args
+        self.required = False
+
+    @staticmethod
+    def add_subparser(subparsers):
+        parser = subparsers.add_parser('pconfig', help="Grind per-project configuration")
+        parser.add_argument('-g', '--generate',
+                            action='store_true',
+                            help="Print a sample configuration file to stdout.")
+
+        parser.add_argument('-w', '--write',
+                            action='store_true',
+                            help="Save a sample configuration file to config path." \
+                                + " Overwrites existing config file!")
+
+class CacheRunner:
+    """Cache subcommand."""
+
+    def __init__(self, config, args):
+        self.args = args
+        self.project_dir = os.getcwd()
+        self.config = config
+        self.config.read_config()
+
+    @staticmethod
+    def add_subparser(subparsers):
+        parser = subparsers.add_parser('cache', help="Interact with grind's dependency cache.")
+
+        parser.add_argument('-c', '--clear',
+                            action='store_true',
+                            dest="clear",
+                            help="Clear cached dependency set.")
+
+        parser.add_argument('-a', '--all',
+                            action='store_true',
+                            dest="all",
+                            help="Operate on all cached dependency sets.")
+
+    def run(self):
+        from disttest import packager
+        cache = packager.CacheManager(self.config.grind_cache_dir)
+        project_root = os.getcwd()
+
+        if self.args.all:
+            manifests = cache.list_all()
+            cache_size = util.sizeof_fmt(util.du(cache.cache_dir ))
+            if self.args.clear:
+                msg = "Are you sure you want to clear all %s dependency sets (%s)?"\
+                        % (len(manifests), cache_size)
+                util.prompt_confirm_or_exit(msg)
+                cache.clear_all()
+            else:
+                cache.print_manifests(manifests)
+        else:
+            project_root = os.getcwd()
+            manifest = cache.list(project_root)
+            if manifest is None:
+                sys.stderr.write("No cached manifest found for %s\n" % project_root)
+                sys.exit(2)
+            if self.args.clear:
+                cache_size = util.sizeof_fmt(util.du(cache.cache_dir + project_root))
+                msg = "Are you sure you want to clear dependency set for %s (%s)?"\
+                        % (project_root, cache_size)
+                util.prompt_confirm_or_exit(msg)
+                cache.clear(project_root)
+                print "Cleared cache for %s." % project_root
+            else:
+                cache.print_manifests([manifest])
+
+
+class TestRunner:
+    """Test subcommand."""
+
+    def __init__(self, config, args):
+        self.args = args
+        self.project_dir = os.getcwd()
+        self.config = config
+        self.config.read_config()
+        self.project_config = ProjectConfig()
+        self.project_config.read_config()
+        self.output_dir = tempfile.mkdtemp(prefix="grind.", dir=self.config.grind_temp_dir)
+        logger.debug("Created temp directory %s", self.output_dir)
+
+    @staticmethod
+    def add_subparser(subparsers):
+        parser = subparsers.add_parser('test', help="Running tests")
+        # Module related
+        parser.add_argument('-l', '--list-modules',
+                            action='store_true',
+                            dest="list_modules",
+                            help="Path to file with the list of tests to run, one per line.")
+        parser.add_argument('-m', '--module',
+                            action='append',
+                            dest='include_modules',
+                            help="Run tests for a module. Can be specified multiple times.")
+        parser.add_argument('-E', '--exclude-module',
+                            action='append',
+                            dest='exclude_modules',
+                            help="Exclude tests for a module. Can be specificed multiple times.")
+        # Patterns
+        parser.add_argument('-i', '--include-pattern',
+                            action='append',
+                            dest='include_patterns',
+                            help="Include pattern for test names." \
+                            + " Supports globbing. Can be specified multiple times.")
+        parser.add_argument('-e', '--exclude-pattern',
+                            action='append',
+                            dest='exclude_patterns',
+                            help="Exclude pattern for unittests." \
+                            + "Takes precedence over include patterns. Supports globbing. Can be specified multiple times.")
+        # Download artifacts
+        parser.add_argument('-a', '--artifacts',
+                            action='store_true',
+                            dest='artifacts',
+                            help="Whether to download test artifacts.")
+        # Misc
+        parser.add_argument('-n', '--num',
+                            type=int,
+                            default=1,
+                            help="Number of times to run each test.")
+        parser.add_argument('-r', '--retries',
+                            type=int,
+                            default=0,
+                            help="Number of times to retry test if it fails.")
+        default_timeout = 600
+        parser.add_argument('-t', '--timeout',
+                            type=int,
+                            default=default_timeout,
+                            help="Per-task timeout. The default timeout is %s seconds." % default_timeout)
+        # Util / debug
+        parser.add_argument('--leak-temp',
+                            action='store_true',
+                            dest="leak_temp",
+                            help="Leak the temp directory with intermediate files. Useful for debugging.")
+        parser.add_argument('--dry-run',
+                            action='store_true',
+                            dest="dry_run",
+                            help="Do not actually run tests or perform remote operations. Useful for debugging.")
+
+    @staticmethod
+    def print_module_tree(root_module, prefix=""):
+        print prefix + "- " + root_module.name
+        subprefix = prefix + "  |"
+        for module in root_module.submodules:
+            TestRunner.print_module_tree(module, prefix = subprefix)
+
+    def run(self):
+        if self.args.list_modules:
+            # Do not include any modules, this way we skip looking for tests
+            i = isolate.Isolate(self.project_dir, self.output_dir, include_modules=[])
+            print "Found %s modules in directory %s" \
+                    % (len(i.maven_project.modules), i.maven_project.project_root)
+            TestRunner.print_module_tree(i.maven_project.root_module)
+        else:
+            self.run_tests()
+
+    def run_tests(self):
+        if self.args.num <= 0:
+            raise Exception("--num must be greater than 0 (got %s)" % self.args.num)
+
+        maven_flags = os.environ.get('GRIND_MAVEN_FLAGS')
+        maven_repo = os.environ.get('GRIND_MAVEN_REPO')
+
+        extra_deps = packager.ExtraDependencies(self.project_config.empty_dirs,
+                                                self.project_config.file_patterns,
+                                                self.project_config.file_globs)
+        i = isolate.Isolate(self.project_dir,
+                            self.output_dir,
+                            include_modules = self.args.include_modules,
+                            exclude_modules = self.args.exclude_modules,
+                            include_patterns = self.args.include_patterns,
+                            exclude_patterns = self.args.exclude_patterns,
+                            cache_dir = self.config.grind_cache_dir,
+                            extra_deps = extra_deps,
+                            maven_flags = maven_flags,
+                            maven_repo = maven_repo,
+                            verbose = self.args.verbose)
+        # Enumerate tests and package test dependencies
+        i.package()
+        # Generate per-test task descriptions
+        i.generate()
+
+        # Set up required environment variables
+        isolate_env = os.environ
+        isolate_env["ISOLATE_SERVER"] = self.config.isolate_server
+        isolate_env["DIST_TEST_MASTER"] = self.config.dist_test_master
+
+        # Get user/pass from environment, or failing that the config file.
+        isolate_env["DIST_TEST_USER"] = os.environ.get('DIST_TEST_USER') or self.config.dist_test_user
+        isolate_env["DIST_TEST_PASSWORD"] = os.environ.get('DIST_TEST_PASSWORD') or self.config.dist_test_password
+
+        if len(i.isolated_files) == 0:
+            logger.error("No tests found for project %s!", self.project_dir)
+            logger.error("Include patterns: %s", self.args.include_patterns)
+            logger.error("Exclude patterns: %s", self.args.exclude_patterns)
+            sys.exit(2)
+
+        # Invoke batcharchive on the generated files, dumping task
+        # hashes to a new json file
+        cmd = "%s batcharchive --dump-json=%s --"
+        hashes_file = os.path.join(self.output_dir, "hashes.json")
+        cmd = cmd % (self.config.isolate_path, hashes_file)
+        logger.debug("Invoking %s", cmd)
+        p = subprocess.Popen(shlex.split(cmd) + i.isolated_files, env=isolate_env)
+        p.wait()
+        if p.returncode != 0:
+            raise Exception("isolate batcharchive failed")
+
+        # Parse the dumped json file and turn it into task descriptions
+        # for dist_test
+        tasks_file = os.path.join(self.output_dir, "run.json")
+        self.isolate_hashes_to_tasks(hashes_file, tasks_file)
+
+        artifacts_flags = []
+        if self.args.artifacts:
+            artifacts_flags = shlex.split("--artifacts --output-dir grind-test-results")
+
+        if self.args.dry_run:
+            logging.info("Dry run, skipping test submission")
+        else:
+            # Call the dist_test client submit
+            cmd = [self.config.dist_test_client_path, "submit"] + \
+                   artifacts_flags + \
+                   ["--name", os.path.basename(self.project_dir), tasks_file]
+            logger.info("Calling %s", " ".join(cmd))
+            p = subprocess.Popen(cmd, env=isolate_env)
+            p.wait()
+            # If we downloaded artifacts, then merge the results
+            if self.args.artifacts:
+                in_files = []
+                for root, dirs, files in os.walk("grind-test-results"):
+                    for f in files:
+                        if f.startswith("TEST-") and f.endswith(".xml"):
+                            in_files.append(os.path.join(root, f))
+                merge_xunit.merge_xunit(in_files, "test_results.xml", ignore_flaky=True, quiet=True)
+            # Bubble up the return code from dist_test
+            if p.returncode != 0:
+                if p.returncode == 88:
+                    logger.warn("Test run failed!")
+                    sys.exit(p.returncode)
+                else:
+                    raise Exception("dist_test client submit failed")
+
+    def cleanup(self):
+        if self.args.leak_temp:
+            logger.info("Leaking temp directory %s", self.output_dir)
+        else:
+            logger.debug("Removing temp directory %s", self.output_dir)
+            shutil.rmtree(self.output_dir)
+
+    def isolate_hashes_to_tasks(self, infile, outfile):
+        """Transform the hashes from the isolate batcharchive command into
+        another JSON file for consumption by dist_test client that describes
+        the set of tasks to run."""
+
+        # Example of what outmap should look like, list of tasks
+        # This gets overwritten below
+        outmap = {
+            "tasks": [
+                {"isolate_hash": "fa0fee63c6d4e540802d22464789c21de12ee8f5",
+                "description": "andrew test task"}
+            ]
+        }
+
+        tasks = []
+
+        logger.debug("Reading input json file with isolate hashes from %s", infile)
+        inmap = {}
+        with open(infile, "r") as i:
+            inmap = json.load(i)
+
+        num_tasks = self.args.num * len(inmap.keys())
+        # Do a sanity check before generating task list,
+        # a giant num parameter could cause trouble.
+        if num_tasks > 10000:
+            logger.error("More than 10,000 tasks generated (%s tasks %s times), too many tasks!",
+                         len(inmap.keys()), self.args.num)
+            sys.exit(1)
+
+        if self.args.retries > 100:
+            logger.error("More than 100 retries specified, too many!")
+            sys.exit(1)
+        if self.args.retries < 0:
+            logger.error("Cannot specify a negative number of retries!")
+            sys.exit(1)
+
+        for k,v in inmap.iteritems():
+            for i in xrange(self.args.num):
+                task = {"isolate_hash" : str(v),
+                        "description" : str(k),
+                        "timeout": self.args.timeout,
+                        "artifact_archive_globs" : self.project_config.artifact_archive_globs,
+                        }
+                if self.args.retries > 0:
+                    task["max_retries"] = self.args.retries
+                tasks.append(task)
+
+        outmap = {"tasks": tasks}
+
+        logger.debug("Writing output json file with %s task descriptions to %s",
+                     num_tasks, outfile)
+        with open(outfile, "wt") as o:
+            json.dump(outmap, o)
+
+
+# Main method and subcommand routing
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Distributed test runner for JUnit + Maven projects using Isolate.")
+
+    # Add subparsers from each subcommand
+    subparsers = parser.add_subparsers(title='subcommands', dest='subparser_name')
+    TestRunner.add_subparser(subparsers)
+    ConfigRunner.add_subparser(subparsers)
+    ProjectConfigRunner.add_subparser(subparsers)
+    CacheRunner.add_subparser(subparsers)
+
+    # Global argument
+    parser.add_argument('-v', '--verbose',
+                        action='store_true',
+                        help="Whether to print verbose output for debugging.")
+    parser.add_argument('-c', '--config',
+                        dest="config_location",
+                        help="Location of config file. Default is %s" % GlobalConfig.default_location)
+    if len(sys.argv[1:]) == 0:
+        parser.print_help()
+        sys.exit(1)
+
+    args = parser.parse_args(sys.argv[1:])
+
+    config = GlobalConfig(args.config_location)
+
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
+
+    # Route to the correct subcommand based on subparser_name
+    subcommands = {
+        "test": test_subcommand,
+        "config": config_subcommand,
+        "pconfig": project_config_subcommand,
+        "cache": cache_subcommand,
+    }
+
+    subcommands[args.subparser_name](config, args)
+
+def config_subcommand(config, args):
+    c = ConfigRunner(config, args)
+    c.run()
+
+def project_config_subcommand(config, args):
+    p = ProjectConfigRunner(ProjectConfig(), args)
+    p.run()
+
+def test_subcommand(config, args):
+
+    runner = TestRunner(config, args)
+    try:
+        runner.run()
+    finally:
+        runner.cleanup()
+
+def cache_subcommand(config, args):
+    runner = CacheRunner(config, args)
+    runner.run()
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,6 @@
+*.isolate
+*.isolated
+*.isolated.state
+junit_report.xml
+build
+*.swp
