@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -e
+
+# OS-agnostic wrapper script for isolate.
+# Downloads the appropriate isolate binary from S3 if necessary
+# and calls isolate.
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+ENV="$DIR/../env"
+
+ISOLATE_BIN="$DIR/bin"
+
+OS="linux"
+if [ "$(uname)" == "Darwin" ]; then
+    OS="osx"
+fi
+
+ISOLATE_DIR="$ENV/$OS"
+ISOLATE_BIN="$ISOLATE_DIR/isolate"
+mkdir -p "$ISOLATE_DIR"
+
+pushd "$DIR" > /dev/null
+GIT_HASH=$(git rev-parse HEAD)
+popd > /dev/null
+HASH_FILE="$ISOLATE_DIR/git-hash"
+
+if [[ ! -e "$ISOLATE_BIN" || "$GIT_HASH" != "$(cat $HASH_FILE)" ]]; then
+    rm -f "$ISOLATE_BIN"
+    wget http://dist-test.s3.amazonaws.com/isolate-bin/$OS/isolate -O "$ISOLATE_BIN"
+    chmod +x "$ISOLATE_BIN"
+    echo "$GIT_HASH" > "$HASH_FILE"
+fi
+
+# Execute
+"$ISOLATE_BIN" "$@"

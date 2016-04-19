@@ -3,3 +3,4 @@ slave-env
 logs
 *.swp
 *.pyc
+env
