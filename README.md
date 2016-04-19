@@ -38,18 +38,11 @@ Start beanstalk:
 
 Once you have the config file setup, do the following to run the master:
 
-        # Set up virtualenv for server
-        $ ./make-env-server.sh
-        # Activate the server's virtualenv
-        $ source server-env/bin/activate
-        # Start the server
-        $ ./server.py
+        $ ./bin/server
 
 Do the same to run a slave:
 
-        $ ./make-env-slave.sh
-        $ source slave-env/bin/activate
-        $ ./slave.py
+        $ ./bin/slave
 
 # Authentication and authorization (server side)
 
