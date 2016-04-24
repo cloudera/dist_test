@@ -1,77 +1,102 @@
-Master, slave, and client for submitting and running Isolate tasks distributed on a cluster.
+# dist_test
 
-The server exposes a set of webpages for viewing jobs and task results. A public dist test server is available: http://dist-test.cloudera.org
+Unit test suites are the first line of defense for finding software bugs.
+However, running a project's full unit test suite can take hours or even days!
+This means developers are unable to run the unit test suite in all circumstances where it would be desirable, leading to a number of issues:
 
-The server is also the API end point for submitting tests and coordinates running test tasks on slaves. Task state is kept in a MySQL database.
+* Lower software quality, since the latency of running the full suite might make it infeasible as a precommit check.
+* Reduced developer productivity, since so much time is spent waiting for unit test runs.
+* Longer debugging times, particularly when debugging race conditions or timing issues in a flaky test.
+* A resistance to adding additional tests (especially end-to-end and randomized tests), since it further increases the runtime of the test suite.
+* Treating the unit test suite as a burden, since it is onerous to run, and typically requires kicking off Jenkins jobs.
 
-The server distributes JSON isolate task descriptions to slaves via [beanstalk](http://kr.github.io/beanstalkd/), a simple pub/sub system.
+Our goal was to write a developer-oriented tool to make running unit tests fast, easy, and accessible.
+This means running the full test suite in the time it takes to get a cup of coffee (&lt;10 minutes), and doing it without having to leave the command-line to start the test run, monitor progress, or view the results.
+Essentially, the equivalent of `ctest` or `mvn test`, but much faster.
 
-To run the server and slave locally (useful for testing), you need a configuration file at `~/.dist_test.cnf` that looks like the following:
+These requirements ruled out just parallel testing.
+Our experiences with [Surefire parallel test execution](https://maven.apache.org/surefire/maven-surefire-plugin/examples/fork-options-and-parallel-execution.html) were not positive.
+It required extensive refactors of the test suite to avoid shared state like hardcoded temp directories and port numbers.
+Furthermore, the degree of parallelism is limited to a single machine, which limits the potential speedup.
 
-        [isolate]
-        home=/home/andrew/dev/swarming/client
-        server=http://dist-test.cloudera.org:4242
-        cache_dir=/tmp/isolate-cache
+For these reasons, we pursued **distributed** testing, and built out our own cloud-based distributed testing infrastructure.
 
-        [aws]
-        access_key=<FILL IN HERE>
-        secret_key=<FILL IN HERE>
-        test_result_bucket=<FILL IN HERE>
+As one example, it takes 8.5 hours to run the 1700+ JUnit test classes in Apache Hadoop serially.
+Using our `dist_test` infrastructure, we can run these same tests in about 15 minutes.
+This same infrastructure is being used by multiple projects at Cloudera, and has become an invaluable tool in our developers' toolbox.
 
-        [mysql]
-        host=localhost
-        user=<FILL IN HERE>
-        password=<FILL IN HERE>
-        database=<FILL IN HERE>
+# Architecture
 
-        [beanstalk]
-        host=localhost
+The distributed testing infrastructure has two components: the backend and the frontend.
 
-        [dist_test]
-        master=http://localhost:8081/
+The backend is a shared resource, and handles storing test dependencies, running test tasks, and monitoring ongoing test runs.
 
-Note that as part of this, you need to setup an AWS account to store test results, and also a MySQL instance running with a configured user/password and database.
+The frontends are language and test framework dependent.
+For instance, we have a frontend for C++ projects using gtest, and also a frontend for Java projects using Surefire and JUnit.
+Frontends are responsible for enumerating the set of tests in the project, determining the test dependencies, and packaging up each test as an independent task.
 
-Start beanstalk:
+Frontends are also the developer's interface to the test infrastructure, and provide CLI-based ways of monitoring an ongoing test run and fetching test logs and output.
 
-        $ beanstalkd
+# Backend
 
-Once you have the config file setup, do the following to run the master:
+`dist_test` reuses some distributed test building blocks developed by Chromium: [Swarming](https://www.chromium.org/developers/testing/isolated-testing/for-swes) and its Go rewrite [Luci](https://github.com/luci/luci-go).
+These provide:
 
-        $ ./bin/server
+* The `.isolate` file format, which specifies the dependencies of a test and how to invoke it
+* The isolate server, a content-addressed blobstore for serving test dependencies
+* Command-line utilities for interacting with the isolate server and running an "isolated" test.
 
-Do the same to run a slave:
+There are some notable feature gaps here, which compromise the functionality in `dist_test`:
 
-        $ ./bin/slave
+* Generating isolate files for an existing C++ or Java project with unit tests
+* A master for submitting test jobs, scheduling test tasks, tracking task state, as well as easy GUI and REST access
+* A cluster of slaves for actually running tests
+* A command-line client so developers interact with the master and watch job progress
+* Integration with existing test result reporting infrastructure, e.g. Jenkins
 
-# Authentication and authorization (server side)
+We also reuse some off-the-shelf software components like [beanstalkd](http://kr.github.io/beanstalkd/) for a work queue and MySQL to persist the master's state.
+This means that the master can be restarted without affecting running jobs, making it easy to roll out software updates.
+We also use S3 to store the stderr and stdout of failed tests.
 
-The distributed test master has a very basic authentication and authorization system.
-The master allows read-only access from anywhere, but requires authentication to
-submit or cancel jobs. The authentication is done either by an IP whitelist or by
-a username/password pair.
+# Frontend
 
-For example, to configure the server:
+We have written two frontends, one for Apache Kudu (C++ and gtest), and one for Java projects using Maven, Surefire, and JUnit.
 
-        [dist_test]
-        allowed_ip_ranges=172.16.0.0/16
-        accounts={"user1":"password", "user2":"pass"}
+The gtest frontend is available in the Apache Kudu repository at [build-support/dist-test.py](https://github.com/apache/incubator-kudu/blob/master/build-support/dist_test.py).
+This frontend is simple, since each unit test is a statically linked binary without additional dependencies.
 
-If a request originates from a host in the specified subnet, it will be allowed without
-any user-based authentication. Otherwise, HTTP Digest authentication will be employed.
+`grind` is our Maven/JUnit/Surefire/JUnit frontend, and is substantially more complex.
+It is possible to invoke JUnit tests directly, but this is not bulletproof since Surefire tests expect a Maven-like directory layout, as well as environment from the pom files.
+Determining all the JAR and resource dependencies to run a test is also difficult, since there is no programmatic access to Maven dependency management.
 
-NOTE: slaves sometimes make requests back to the dist-test master. Thus, the slaves
-must be configured with a username and password if they do not run from within an
-allowed IP range.
+# Example usage
 
-# Authentication and authorization (client side)
+See the [setup guide](docs/setup) for detailed instructions on setting up dist_test and required services.
 
-If a client is not within an authorized IP range, its username and password can be
-configured as follows:
+Here, let's demonstrate how developers interact with the distributed testing infrastructure, using the `grind` frontend.
 
-        [dist_test]
-        user=foo
-        password=bar
+`grind` expects to be run from the root of the Maven project.
+It exposes an interface broadly similar to `mvn test`.
+You can run all tests, specify tests to be included/excluded, as well as more advanced features like running a test multiple times, or automatically retrying a task on failure.
 
-Alternatively, the `DIST_TEST_USER` and `DIST_TEST_PASSWORD` environment variables may
-be used to specify the credentials.
+These examples are being run on the example Maven project included with `grind`.
+
+Submitting a job:
+
+![Submitting a job](docs/static/submit_short.gif)
+
+Viewing the job status page:
+
+![Submitting a job](docs/static/job_page_fullrun.png)
+
+Looking at the "trace" view of the job, a timeline of when tasks were run on which slaves:
+
+![Submitting a job](docs/static/job_page_failedrun_trace.png)
+
+# Additional resources
+
+More detailed information about `dist_test` and `grind` can be found in the included project documentation:
+
+* [docs/setup.md](docs/setup.md)
+* [docs/dist_test.md](docs/dist_test.md)
+* [docs/grind.md](docs/grind.md)
