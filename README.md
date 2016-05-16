@@ -71,7 +71,7 @@ Determining all the JAR and resource dependencies to run a test is also difficul
 
 # Example usage
 
-See the [setup guide](docs/setup) for detailed instructions on setting up dist_test and required services.
+See the [setup guide](docs/setup.md) for detailed instructions on setting up dist_test and required services.
 
 Here, let's demonstrate how developers interact with the distributed testing infrastructure, using the `grind` frontend.
 
