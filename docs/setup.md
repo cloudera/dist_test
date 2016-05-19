@@ -131,8 +131,8 @@ Click on the job status page URL to watch progress. It's normal for the test run
 
 More detailed information about `dist_test` and `grind` can be found in the included project documentation:
 
-* [docs/dist_test.md](docs/dist_test.md)
-* [docs/grind.md](docs/grind.md)
+* [docs/dist_test.md](dist_test.md)
+* [docs/grind.md](grind.md)
 
 The Apache Kudu repository also has an example of a C++ / gtest `dist_test` frontend at [build-support/dist-test.py](https://github.com/apache/incubator-kudu/blob/master/build-support/dist_test.py).
 Kudu's frontend is substantially simpler, since its unit tests are statically linked binaries and thus do not have many dependencies and are simple to invoke.
