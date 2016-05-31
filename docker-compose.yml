@@ -1,0 +1,82 @@
+# Docker Compose file for dist_test
+#
+# Usage:
+#
+#     $ export AWS_ACCESS_KEY=foo AWS_SECRET_KEY=bar TEST_RESULT_BUCKET=your-s3-bucket
+#     $ docker-compose up
+#     $ docker exec disttest_client_1 sh -c 'cd grind/python/disttest/test/test-resources/MultiModuleTestProject && grind test'
+
+version: '2'
+services:
+  mysql:
+    image: mysql:5.6.26
+    environment:
+      - MYSQL_ROOT_PASSWORD=dist_test
+      - MYSQL_DATABASE=dist_test
+      - MYSQL_USER=dist_test
+      - MYSQL_PASSWORD=dist_test
+    restart: always
+  beanstalk:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.beanstalk
+    restart: always
+  isolate:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.isolate
+    restart: always
+  master:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.master
+    environment:
+      - AWS_ACCESS_KEY
+      - AWS_SECRET_KEY
+      - TEST_RESULT_BUCKET
+    volumes:
+      - ./docker/config/dist_test.cnf:/root/.dist_test.cnf
+    entrypoint:
+      - sh
+      - -c
+      - sleep 10 && ./infra/server.py
+    links:
+      - beanstalk
+      - mysql
+    ports:
+      - "8081:8081"
+    restart: always
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    environment:
+      - AWS_ACCESS_KEY
+      - AWS_SECRET_KEY
+      - TEST_RESULT_BUCKET
+    volumes:
+      - ./docker/config/dist_test.cnf:/root/.dist_test.cnf
+    entrypoint:
+      - sh
+      - -c
+      - sleep 10 && ./infra/slave.py
+    links:
+      - master
+      - beanstalk
+      - isolate
+      - mysql
+    restart: always
+  client:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    volumes:
+      - ./docker/config/grind.cfg:/root/.grind/grind.cfg
+    entrypoint:
+      # hack for keep the container running
+      - tail
+      - -f
+      - /dev/null
+    links:
+      - master
+      - isolate

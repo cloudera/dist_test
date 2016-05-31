@@ -1,0 +1,9 @@
+[grind]
+isolate_server = http://isolate:4242
+dist_test_client_path = /dist_test/bin/client
+dist_test_master = http://master:8081
+grind_cache_dir = /dist_test/env/.grind/cache
+grind_temp_dir = /dist_test/env/.grind/temp
+isolate_path = /dist_test/bin/isolate
+dist_test_password =
+dist_test_user =

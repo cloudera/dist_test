@@ -1,0 +1,28 @@
+FROM ubuntu:16.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  build-essential \
+  gawk \
+  git \
+  maven openjdk-8-jdk \
+  python python-dev python-pip python-setuptools python-virtualenv \
+  unzip \
+  virtualenv \
+  wget
+
+# Install dist_test
+ADD . /dist_test
+WORKDIR /dist_test
+ENV PATH=/dist_test/grind/bin:$PATH
+
+# bake the default config into the image
+RUN mkdir -p /root/.grind && cp ./docker/config/grind.cfg.sample /root/.grind/grind.cfg
+
+# pre-install isolate (first run installs the isolate binary)
+RUN /dist_test/bin/isolate version
+
+# pre-build the grind test
+RUN cd grind/python/disttest/test/test-resources/MultiModuleTestProject && \
+  mvn clean package -DskipTests
+
+# no entrypoint
