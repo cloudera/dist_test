@@ -1,7 +1,14 @@
 grind
 =====
 
-grind finds the tests in your Java Maven+Surefire+JUnit project, packages them up individually, and runs them distributed across a cluster. Empirically, running the 1700+ test classes in Hadoop has gone from multiple hours to about fifteen minutes by using grind.
+grind is a dist_test front end for Java Maven+Surefire+JUnit projects.
+It scans your project to find test classes and runtime dependencies, creates isolate tasks, and submits them to the dist_test master to run them on the cluster.
+
+grind's interface resembles that of Surefire, meaning you can do test and module-level includes/excludes.
+It also supports more advanced functionality like running tests multiple times, and retrying tests if they fail.
+
+When called with the `--artifacts` flag, grind will download and merge the JUnit output from Surefire into a `test-results.xml` file.
+This is useful when running grind in a Jenkins environment, since this merged output can be consumed by the Jenkins JUnit plugin.
 
 Dependencies
 ------------
@@ -10,14 +17,12 @@ Dependencies
 * Python 2.7+
 * Java
 * A local dev environment with your project successfully built
-* Luci, which is an Isolate compatible rewrite in Go (much faster than the original Python implementation). Follow the README for directions as to installing Luci. If you haven't installed  a Go program from source before, this can be involved.
+* Luci, which is an Isolate compatible rewrite in Go (much faster than the original Python implementation). Follow the README for directions as to installing Luci. If you haven't installed a Go program from source before, this can be involved.
 
         https://github.com/luci/luci-go
+
 Note that luci-go is only compilable using GO 1.4. Compiling with GO 1.5 will result in internal import violation problem. See details at https://docs.google.com/document/d/1e8kOo3r51b2BWtTs_1uADIA5djfXhPT36s6eHVRIvaU/edit.
 
-* dist_test, which is has a client for submitting to our internal distributed test infrastructure:
-
-        http://github.mtv.cloudera.com/todd/dist_test
 
 Example usage
 -------------
@@ -29,20 +34,22 @@ Example usage
 
 1. Set up the grind configuration, using `grind config`. This is used to find the above project dependencies and our internal isolate server.
 
-        $ grind config > ~/.grind.cfg
+        $ grind config --generate --write
         $ grind config
-        INFO:root:Read config from location /home/andrew/.grind.cfg
         [grind]
-        isolate_server = http://a1228.halxg.cloudera.com:4242
+        isolate_server = http://isolate.cloudera.org:4242
         dist_test_client_path = ~/dev/dist_test/client.py
+        dist_test_master = http://dist-test.cloudera.org:80/
         isolate_path = ~/dev/go/bin/isolate
         grind_temp_dir = /tmp
         grind_cache_dir = ~/.grind/cache
+        dist_test_password = 
+        dist_test_user = 
 
 1. cd to your project and build it, e.g.
 
         $ cd ~/dev/hadoop/trunk
-        $ mvn clean package install -DskipTests....
+        $ mvn clean package install -DskipTests -Pdist....
 
 1. List the available modules, if it's a multi-module project
 
@@ -182,8 +189,8 @@ When debugging, it's nice to run a test locally. This can be done as follows:
 
 1. Run the hash using the isolate client, which will make another temp dir:
 
-        $ export ISOLATE_SERVER=http://a1228.halxg.cloudera.com:4242
-        $ ~/dev/swarming/client/run_isolated.py --verbose --leak-temp-dir --hash a21ff4f49b208afd9cda89705fef4668c94fe16a
+        $ export ISOLATE_SERVER=http://isolate.cloudera.org:4242
+        $ ./swarming/client/run_isolated.py --verbose --leak-temp-dir --hash a21ff4f49b208afd9cda89705fef4668c94fe16a
         ...
         WARNING  22749    run_isolated(197): Deliberately leaking /tmp/run_tha_testGvhm8E for later examination
 
