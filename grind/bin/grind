@@ -215,8 +215,11 @@ class ProjectConfig(BaseConfig):
             self.__dict__[o] = decoded
 
     def write_config(self, outfile):
-        # Write the original config
-        self.original_config.write(outfile)
+        if self.original_config:
+            # Write the original config
+            self.original_config.write(outfile)
+        else:
+            self.config.write(outfile)
 
 
 class ProjectConfigRunner(ConfigRunner):
