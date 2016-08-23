@@ -8,6 +8,7 @@ import multiprocessing
 from multiprocessing.pool import ThreadPool
 import optparse
 import os
+import socket
 import sys
 import time
 import urllib
@@ -29,6 +30,11 @@ RED = "\x1b[31m"
 YELLOW = "\x1b[33m"
 GREEN = "\x1b[32m"
 RESET = "\x1b[m"
+
+# Set a relatively long socket timeout, but short enough
+# that if the server side is completely hung, we won't
+# hang forever.
+SOCKET_TIMEOUT_SECS = 60
 
 LOG = logging.getLogger('dist_test.client')
 LOG.setLevel(logging.INFO)
@@ -399,6 +405,7 @@ def main(argv):
     sys.exit(1)
 
   config.configure_auth()
+  socket.setdefaulttimeout(SOCKET_TIMEOUT_SECS)
   command = argv[1]
   del argv[1]
   if command == "submit":

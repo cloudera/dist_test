@@ -29,4 +29,4 @@ fi
 source "$ENV/$env_name/bin/activate"
 
 # Execute
-"$DIR/../infra/slave.py" "$@"
+exec "$DIR/../infra/slave.py" "$@"
