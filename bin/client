@@ -4,4 +4,4 @@ set -e
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Execute
-$DIR/../infra/client.py "$@"
+exec $DIR/../infra/client.py "$@"

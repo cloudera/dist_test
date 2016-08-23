@@ -32,4 +32,4 @@ if [[ ! -e "$ISOLATE_BIN" || "$GIT_HASH" != "$(cat $HASH_FILE)" ]]; then
 fi
 
 # Execute
-"$ISOLATE_BIN" "$@"
+exec "$ISOLATE_BIN" "$@"
