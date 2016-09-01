@@ -148,7 +148,7 @@ Test resources are files consumed by test cases, things like configuration files
 These resources are automatically copied into `target/test-classes` by the [Maven resources plugin](https://maven.apache.org/plugins/maven-resources-plugin/).
 The `target/test-classes` folder is normally referenced from the test by a Java System property.
 
-See [HBASE-14588](https://issues.apache.org/jira/browse/HBASE-14588), [HADOOP-12369](https://issues.apache.org/jira/browse/HBASE-14588), [HADOOP-12367](https://issues.apache.org/jira/browse/HADOOP-12367) for examples.
+See [HBASE-14588](https://issues.apache.org/jira/browse/HBASE-14588), [HADOOP-12369](https://issues.apache.org/jira/browse/HADOOP-12369), [HADOOP-12367](https://issues.apache.org/jira/browse/HADOOP-12367) for examples.
 
 ### No test-sources.jar attached
 
