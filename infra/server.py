@@ -29,9 +29,12 @@ DIGEST_AUTH_KEY = random.getrandbits(4096)
 
 class Authorize(cherrypy.Tool):
 
-  def __init__(self, allowed_ip_ranges=None, accounts=None):
+  def __init__(self, allowed_ip_ranges=None, accounts={}):
     self.allowed_ranges = [netaddr.IPNetwork(a) for a in allowed_ip_ranges]
-    self.accounts = accounts or {}
+    self.accounts = {}
+    for u, p in accounts.iteritems():
+      self.accounts[str(u)] = str(p)
+
     self._point = "before_handler"
     self._name = None
     self._priority = 50

@@ -197,9 +197,14 @@ class Slave(object):
     if not self.results_store.mark_task_running(task.task):
       LOG.info("Task %s canceled", task.task.description)
       return
+    # Make run_isolated run in 'bot' mode. This prevents it from trying
+    # to use oauth to authenticate.
+    env = os.environ.copy()
+    env['SWARMING_HEADLESS'] = '1'
+
     LOG.info("Running command: %s", repr(cmd))
     p = subprocess.Popen(
-      cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+      cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     pipes = [p.stdout, p.stderr]
     self._set_flags(p.stdout)
     self._set_flags(p.stderr)
