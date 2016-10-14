@@ -33,16 +33,16 @@ luci-py:
 
 luci-go:
 
-        commit ca2862b9255f9cf4e293bd399145a818ce8f04b7
-        Author: Andrii Shyshkalov <tandrii@chromium.org>
-        Date:   Mon Jun 1 15:38:57 2015 +0200
+        commit 69b5913d2932a6c71209a5a15ec6fa3af56bb73f
+        Author: Todd Lipcon <todd@cloudera.com>
+        Date:   Wed Jun 3 11:23:29 2015 -0700
 
-            Fix TestArchiveAbsolutePaths on Windows.
+            Allow non-HTTPS servers outside of appspot
 
-            R=maruel@chromium.org, todd@cloudera.com
+            R=maruel@chromium.org
             BUG=
 
-            Review URL: https://codereview.chromium.org/1149753006
+            Review URL: https://codereview.chromium.org/1155533005
 
 Follow the luci-go README for installation instructions.
 This requires Go 1.4. 1.5 and higher will fail with an error about "use of internal package not allowed".

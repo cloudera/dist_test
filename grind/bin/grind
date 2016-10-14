@@ -24,7 +24,7 @@ import subprocess
 import sys
 import tempfile
 
-sys.path = [os.path.join(os.path.realpath(os.path.dirname(__file__)), "../python")] + sys.path
+sys.path = [os.path.realpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../python"))] + sys.path
 from disttest import merge_xunit
 from disttest import isolate
 from disttest import packager

@@ -4,3 +4,4 @@ logs
 *.swp
 *.pyc
 env
+.idea/

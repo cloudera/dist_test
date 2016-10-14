@@ -145,7 +145,7 @@ class MavenProject:
     def _find_all_modules(self):
         # Modules are directories that have a pom.xml and a target dir
         for root, dirs, files in os.walk(self.project_root):
-            if "pom.xml" in files and "target" in dirs:
+            if "pom.xml" in files:
                 self.modules.append(Module(os.path.normpath(root)))
 
     def _walk(self):
@@ -181,6 +181,8 @@ class MavenProject:
         # These will later be extracted
         for module in self.modules:
             target_root = os.path.join(module.root, "target")
+            if not os.path.exists(target_root):
+                continue
             for entry in os.listdir(target_root):
                 abs_path = os.path.join(target_root, entry)
                 if os.path.isfile(abs_path):
