@@ -349,7 +349,11 @@ class Packager:
         if self.__verbose:
             quiet_flag = ""
 
-        cmd = """%s --settings %s %s dependency:copy-dependencies -Dmdep.useRepositoryLayout=true -Dmdep.copyPom -DoutputDirectory=%s %s"""
+        cmd = ("%s --settings %s %s dependency:copy-dependencies " +
+               "-Dmdep.useRepositoryLayout=true " +
+               "-Dmdep.copyPom " +
+               "-Dmdep.addParentPoms " +
+               "-DoutputDirectory=%s %s")
         cmd = cmd % (env_mvn, settings_xml, quiet_flag, cached_m2_repo, copy_deps_flags)
         Packager.__shell(cmd, self.__project_root)
 
