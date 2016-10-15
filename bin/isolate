@@ -12,7 +12,14 @@ ISOLATE_BIN="$DIR/bin"
 
 OS="linux"
 if [ "$(uname)" == "Darwin" ]; then
-    OS="osx"
+    ver=$(sw_vers -productVersion)
+    if [[ "$ver" < "10.12" ]]; then
+        # macOS earlier than Sierra
+        OS="osx"
+    else
+        # macOS Sierra or later
+        OS="osx-sierra"
+    fi
 fi
 
 ISOLATE_DIR="$ENV/$OS"
