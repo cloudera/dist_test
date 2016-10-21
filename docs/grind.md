@@ -73,6 +73,10 @@ Example usage
 
         $ grind test -m hadoop-hdfs -i TestBalancer\* -i TestDFSClient -i Test\*CLI
 
+1. Run the tests with JDK 7 (default is JDK 8)
+
+        $ grind test --java-version 7
+
 See `grind test --help` for more advanced usage instructions.
 
 Global Configuration
@@ -133,10 +137,11 @@ Like the `grind config` command, `pconfig` will generate a default config to the
 As an example, here is Hadoop's `.grind_project.cfg`. Hadoop tests expect a few extra directories to be created, and we also need to upload the native libraries that are not picked up by the Maven Dependency Plugin.
 
         [grind]
+        artifact_archive_globs = ["**/surefire-reports/TEST-*.xml"]
         empty_dirs = ["test/data", "test-dir", "log"]
         file_globs = []
         file_patterns = ["*.so"]
-        artifact_archive_globs = ["**/surefire-reports/TEST-*.xml"]
+        java_version = 8
 
 Common issues when onboarding
 -----------------------------

@@ -31,6 +31,8 @@ from disttest import packager
 from disttest import util
 
 logger = logging.getLogger(__name__)
+supported_java_versions = [7, 8]
+default_java_version = 8
 
 
 class BaseConfig:
@@ -185,6 +187,7 @@ class ProjectConfig(BaseConfig):
     _section = "grind"
     _required = {}
     _optional = {
+        "java_version": str(default_java_version),
         "empty_dirs": "[]",
         "file_patterns": "[]",
         "file_globs": "[]",
@@ -355,6 +358,10 @@ class TestRunner:
                             type=int,
                             default=default_timeout,
                             help="Per-task timeout. The default timeout is %s seconds." % default_timeout)
+        parser.add_argument('--java-version',
+                            type=int, choices=supported_java_versions,
+                            help="Select Java version. Default to project config option 'java_version' or %d."
+                                 % default_java_version)
         # Util / debug
         parser.add_argument('--leak-temp',
                             action='store_true',
@@ -386,6 +393,9 @@ class TestRunner:
         if self.args.num <= 0:
             raise Exception("--num must be greater than 0 (got %s)" % self.args.num)
 
+        java_version = self.args.java_version or self.project_config.java_version
+        assert java_version in supported_java_versions
+
         maven_flags = os.environ.get('GRIND_MAVEN_FLAGS')
         maven_repo = os.environ.get('GRIND_MAVEN_REPO')
 
@@ -394,6 +404,7 @@ class TestRunner:
                                                 self.project_config.file_globs)
         i = isolate.Isolate(self.project_dir,
                             self.output_dir,
+                            java_version = java_version,
                             include_modules = self.args.include_modules,
                             exclude_modules = self.args.exclude_modules,
                             include_patterns = self.args.include_patterns,
