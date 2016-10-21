@@ -185,6 +185,7 @@ class ProjectConfig(BaseConfig):
     _section = "grind"
     _required = {}
     _optional = {
+        "java_version": "8",
         "empty_dirs": "[]",
         "file_patterns": "[]",
         "file_globs": "[]",
@@ -355,6 +356,11 @@ class TestRunner:
                             type=int,
                             default=default_timeout,
                             help="Per-task timeout. The default timeout is %s seconds." % default_timeout)
+        parser.add_argument('--java-version',
+                            type=int,
+                            help="Select Java version. Valid choices include 7 and 8. " +
+                                 "If not specified, project config option \"java_version\" will apply. " +
+                                 "If project config option is not specified, default to 8.")
         # Util / debug
         parser.add_argument('--leak-temp',
                             action='store_true',
@@ -394,6 +400,7 @@ class TestRunner:
                                                 self.project_config.file_globs)
         i = isolate.Isolate(self.project_dir,
                             self.output_dir,
+                            java_version = self.args.java_version or self.project_config.java_version,
                             include_modules = self.args.include_modules,
                             exclude_modules = self.args.exclude_modules,
                             include_patterns = self.args.include_patterns,
