@@ -190,6 +190,7 @@ class ProjectConfig(BaseConfig):
         "file_patterns": "[]",
         "file_globs": "[]",
         "artifact_archive_globs": """["**/surefire-reports/TEST-*.xml"]""",
+        "maven_settings": "null",
     }
 
     default_location = os.path.join(os.getcwd(), ".grind_project.cfg")
@@ -343,6 +344,8 @@ class TestRunner:
                             dest='artifacts',
                             help="Whether to download test artifacts.")
         # Misc
+        parser.add_argument('-s', '--maven-settings',
+                            help="The Maven settings.xml to use.")
         parser.add_argument('-n', '--num',
                             type=int,
                             default=1,
@@ -407,6 +410,7 @@ class TestRunner:
                             exclude_patterns = self.args.exclude_patterns,
                             cache_dir = self.config.grind_cache_dir,
                             extra_deps = extra_deps,
+                            maven_settings = self.args.maven_settings or self.project_config.maven_settings,
                             maven_flags = maven_flags,
                             maven_repo = maven_repo,
                             verbose = self.args.verbose)

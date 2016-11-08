@@ -62,7 +62,8 @@ class Isolate:
 
     def __init__(self, project_root, output_dir, java_version=None,
                  include_modules=None, exclude_modules=None, include_patterns=None, exclude_patterns=None,
-                 cache_dir=None, extra_deps=None, maven_flags=None, maven_repo=None, verbose=False):
+                 cache_dir=None, extra_deps=None, maven_flags=None,
+                 maven_repo=None, maven_settings=None, verbose=False):
         logger.info("Using output directory " + output_dir)
         self.output_dir = output_dir
         self.java_version = java_version
@@ -73,6 +74,7 @@ class Isolate:
                                                        exclude_patterns=exclude_patterns)
         self.packager = packager.Packager(self.maven_project, self.output_dir,
                                           cache_dir=cache_dir, extra_deps=extra_deps,
+                                          maven_settings = maven_settings,
                                           maven_flags = maven_flags, maven_repo = maven_repo,
                                           verbose = verbose)
         self.isolated_files = []
