@@ -32,15 +32,17 @@ Example usage
 
         $ export PATH=/path/to/grind/bin:$PATH
 
-1. Set up the grind configuration, using `grind config`. This is used to find the above project dependencies and our internal isolate server.
+1. Set up the grind configuration, using `grind config`. This is used to find the above project dependencies and our internal isolate server. Fill in `dist_test_user` and `dist_test_password` as is appropriate.
 
         $ grind config --generate --write
+        Do you want to write sample config file to /home/andrew/.grind/grind.cfg? (y/N): y
+        Wrote sample config file to /home/andrew/.grind/grind.cfg
         $ grind config
         [grind]
         isolate_server = http://isolate.cloudera.org:4242
-        dist_test_client_path = ~/dev/dist_test/client.py
+        dist_test_client_path = ~/dev/dist_test/bin/client
         dist_test_master = http://dist-test.cloudera.org:80/
-        isolate_path = ~/dev/go/bin/isolate
+        isolate_path = ~/dev/dist_test/bin/isolate
         grind_temp_dir = /tmp
         grind_cache_dir = ~/.grind/cache
         dist_test_password = 
@@ -81,7 +83,7 @@ The `grind config` command lets you display your current configuration, or gener
 * `isolate_server`: The URL of the isolate server where artifacts will be uploaded.
 * `dist_test_client_path`: The path to `client.py` within your checked out `dist_test` repository.
 * `dist_test_user`: Your username, if the dist test server requires authentication. This can be overridden by the `DIST_TEST_USER` environment variable.
-* `dist_test_password`: Your password, if the dist test server requires authentication. This can be overridden by the `DIST_TEST_PASSWROD` environment variable.
+* `dist_test_password`: Your password, if the dist test server requires authentication. This can be overridden by the `DIST_TEST_PASSWORD` environment variable.
 * `isolate_path`: Path to the isolate binary, this is used to generate the isolate task descriptions
 * `grind_temp_dir`: Where grind will keep per-invocation data. This should be on the same hard disk as the `grind_cache_dir` to enable hardlinking.
 * `grind_cache_dir`: Where grind will cached per-project dependency sets. This greatly speeds up repeated grind invocations. This should be on the same hard disk as the `grind_cache_dir` to enable hardlinking.
@@ -217,4 +219,4 @@ grind is composed of:
 
 See the code comments and docstrings for more detail. `grind` is a good entry point, since it shows how the `disttest` module is used, and how the different projects (`luci`, `dist_test`) fit in.
 
-Use the `run_tests.sh` script to test your changes to `disttest`. New contributions should come with a corresponding unit test.
+Use the `run_tests.sh` script to test your changes to `grind`. New contributions should come with a corresponding unit test.

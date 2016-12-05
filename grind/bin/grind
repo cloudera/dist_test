@@ -93,10 +93,10 @@ class GlobalConfig(BaseConfig):
 
     _section = "grind"
     _required = {
-        "isolate_server": "http://isolate.cloudera.org:4242",
-        "isolate_path": os.path.join("~", "dev", "go", "bin", "isolate"),
-        "dist_test_client_path": os.path.join("~", "dev", "dist_test", "client.py"),
-        "dist_test_master": "http://dist-test.cloudera.org:80/"
+        "isolate_server":        "http://isolate.cloudera.org:4242",
+        "isolate_path":          os.path.join("~", "dev", "dist_test", "bin", "isolate"),
+        "dist_test_client_path": os.path.join("~", "dev", "dist_test", "bin", "client"),
+        "dist_test_master":      "http://dist-test.cloudera.org:80/",
     }
     _optional = {
         "grind_cache_dir": os.path.join("~", ".grind", "cache"),
@@ -451,6 +451,7 @@ class TestRunner:
                    artifacts_flags + \
                    ["--name", os.path.basename(self.project_dir), tasks_file]
             logger.info("Calling %s", " ".join(cmd))
+
             p = subprocess.Popen(cmd, env=isolate_env)
             p.wait()
             # If we downloaded artifacts, then merge the results
