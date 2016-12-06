@@ -186,6 +186,9 @@ class MavenProject:
             for entry in os.listdir(target_root):
                 abs_path = os.path.join(target_root, entry)
                 if os.path.isfile(abs_path):
+                    # Skip "original-*.jar", which are unshaded artifacts
+                    if entry.startswith("original-") and entry.endswith(".jar"):
+                        continue
                     if entry.endswith("-test-sources.jar") or entry.endswith("-tests.jar"):
                         # Do not need test jars from a module if we're not running its tests
                         if module in self.included_modules:
