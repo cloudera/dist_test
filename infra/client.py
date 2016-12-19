@@ -111,7 +111,7 @@ def urlopen_with_retry(*args, **kwargs):
   while True:
     try:
       return urllib2.urlopen(*args, **kwargs)
-    except:
+    except Exception:
       if attempt == max_attempts:
           raise
       attempt += 1
@@ -154,7 +154,7 @@ def load_last_job_id():
   try:
     with file(LAST_JOB_PATH, "r") as f:
       return f.read()
-  except:
+  except Exception:
     return None
 
 def submit_job_json(job_prefix, job_json):
@@ -223,7 +223,12 @@ def get_job_id_from_args(command, args):
 
 def watch(argv):
   job_id = get_job_id_from_args("watch", argv)
-  sys.exit(do_watch_results(job_id))
+  ret = 1
+  try:
+    ret = do_watch_results(job_id)
+  except KeyboardInterrupt:
+    pass
+  sys.exit(ret)
 
 def fetch_tasks(job_id, status=None):
   params = {"job_id": job_id}
@@ -275,7 +280,7 @@ def _fetch(job_id, out_dir, artifacts=False, logs=False, failed_only=False, **kw
   # Attempt to make the output directory
   try:
     os.makedirs(out_dir)
-  except:
+  except Exception:
     pass
   # Collect links, download at the end
   log_links = []
