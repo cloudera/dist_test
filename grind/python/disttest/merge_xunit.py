@@ -174,6 +174,7 @@ if __name__ == '__main__':
   parser.add_argument("--ignore-flaky", dest="ignore_flaky", action="store_true", help='Whether to ignore failed attempts of flaky tests.')
   parser.add_argument("-q", "--quiet", dest="quiet", action="store_true", help='Print fewer messages to stdout.')
 
+  args = parser.parse_args()
   in_files = _get_in_files(args)
   out_file = _get_out_file(args, in_files)
   print ('Will merge into %s' % out_file)
