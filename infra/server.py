@@ -27,6 +27,23 @@ LOG = None
 
 DIGEST_AUTH_KEY = random.getrandbits(4096)
 
+def no_caching(*args, **kwargs):
+  """
+  CherryPy tool which emits the appropriate HTTP headers to disable
+  client-side HTTP caching.
+  """
+  headers = {
+    'Cache-Control': 'no-cache, no-store',
+    'Pragma': 'no-cache',
+    'Expires': 'Sat, 01 Jan 1970 00:00:00 GMT'
+  }
+  # cherrypy 'HeaderMap' doesn't support .extend(), so do it manually
+  for k, v in headers.iteritems():
+    cherrypy.response.headers[k] = v
+
+cherrypy.tools.no_caching = cherrypy.Tool('before_handler', no_caching)
+
+
 class Authorize(cherrypy.Tool):
 
   def __init__(self, allowed_ip_ranges=None, accounts={}):
@@ -73,6 +90,7 @@ class DistTestServer(object):
     self.results_store = dist_test.ResultsStore(self.config)
 
   @cherrypy.expose
+  @cherrypy.tools.no_caching()
   def index(self):
     stats = self.task_queue.stats()
     body = "<h1>Stats</h1>\n" + self._render_stats(stats)
@@ -81,6 +99,7 @@ class DistTestServer(object):
     return self.render_container(body)
 
   @cherrypy.expose
+  @cherrypy.tools.no_caching()
   def job(self, job_id, task_id=None):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
     if len(tasks) == 0:
@@ -96,6 +115,7 @@ class DistTestServer(object):
     return delta.seconds * 1000000 + delta.microseconds
 
   @cherrypy.expose
+  @cherrypy.tools.no_caching()
   def trace(self, job_id):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
     ret = []
@@ -134,6 +154,7 @@ class DistTestServer(object):
   @cherrypy.expose
   @cherrypy.tools.json_out()
   @cherrypy.tools.authorize()
+  @cherrypy.tools.no_caching()
   def cancel_job(self, job_id):
     self.results_store.cancel_job(job_id)
     return {"status": "SUCCESS"}
@@ -141,6 +162,7 @@ class DistTestServer(object):
   @cherrypy.expose
   @cherrypy.tools.json_out()
   @cherrypy.tools.authorize()
+  @cherrypy.tools.no_caching()
   def submit_job(self, job_id, job_json):
     job_desc = json.loads(job_json)
 
@@ -161,6 +183,7 @@ class DistTestServer(object):
   @cherrypy.expose
   @cherrypy.tools.json_out()
   @cherrypy.tools.authorize()
+  @cherrypy.tools.no_caching()
   def retry_task(self, task_json):
     task = dist_test.Task.from_json(task_json)
     if task.attempt < task.max_retries:
@@ -195,6 +218,7 @@ class DistTestServer(object):
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
+  @cherrypy.tools.no_caching()
   def job_status(self, job_id):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
     job_summary, task_groups = self._summarize_tasks(tasks, json_compatible=True)
@@ -202,12 +226,14 @@ class DistTestServer(object):
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
+  @cherrypy.tools.no_caching()
   def failed_tasks(self, job_id):
     # Deprecated, use the "tasks" endpoint instead.
     return self.tasks(job_id, status="failed")
 
   @cherrypy.expose
   @cherrypy.tools.json_out()
+  @cherrypy.tools.no_caching()
   def tasks(self, job_id, status=None):
     if status not in (None, "failed", "succeeded", "finished"):
       return "Unknown status type"

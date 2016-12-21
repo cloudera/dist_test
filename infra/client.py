@@ -50,6 +50,12 @@ def ontty(msg):
 def generate_job_id():
   return "%s.%d.%d" % (getpass.getuser(), int(time.time()), os.getpid())
 
+
+def make_url(path):
+  assert path.startswith("/")
+  return TEST_MASTER.rstrip("/") + path
+
+
 def print_status(start_time, previous_result, result, first=False, retcode=None):
   # In non-interactive mode, do not print unless the result changed
   if not is_tty() and previous_result is not None:
@@ -105,7 +111,7 @@ def urlopen_with_retry(*args, **kwargs):
   while True:
     try:
       return urllib2.urlopen(*args, **kwargs)
-    except:
+    except Exception:
       if attempt == max_attempts:
           raise
       attempt += 1
@@ -115,10 +121,10 @@ def urlopen_with_retry(*args, **kwargs):
 
 
 def do_watch_results(job_id):
-  watch_url = TEST_MASTER + "/job?" + urllib.urlencode([("job_id", job_id)])
+  watch_url = make_url("/job?" + urllib.urlencode([("job_id", job_id)]))
   LOG.info("Watch your results at %s", watch_url)
 
-  url = TEST_MASTER + "/job_status?" + urllib.urlencode([("job_id", job_id)])
+  url = make_url("/job_status?" + urllib.urlencode([("job_id", job_id)]))
   start_time = time.time()
 
   first = True
@@ -148,7 +154,7 @@ def load_last_job_id():
   try:
     with file(LAST_JOB_PATH, "r") as f:
       return f.read()
-  except:
+  except Exception:
     return None
 
 def submit_job_json(job_prefix, job_json):
@@ -159,7 +165,7 @@ def submit_job_json(job_prefix, job_json):
     job_prefix += "."
   job_id = job_prefix + generate_job_id()
   form_data = urllib.urlencode({'job_id': job_id, 'job_json': job_json})
-  url = TEST_MASTER + "/submit_job"
+  url = make_url("/submit_job")
   LOG.info("Submitting job to " + url)
   result_str = urlopen_with_retry(url, data=form_data).read()
   result = json.loads(result_str)
@@ -217,13 +223,18 @@ def get_job_id_from_args(command, args):
 
 def watch(argv):
   job_id = get_job_id_from_args("watch", argv)
-  sys.exit(do_watch_results(job_id))
+  ret = 1
+  try:
+    ret = do_watch_results(job_id)
+  except KeyboardInterrupt:
+    pass
+  sys.exit(ret)
 
 def fetch_tasks(job_id, status=None):
   params = {"job_id": job_id}
   if status is not None:
     params["status"] = status
-  url = TEST_MASTER + "/tasks?" + urllib.urlencode(params)
+  url = make_url("/tasks?" + urllib.urlencode(params))
   results_str = urlopen_with_retry(url).read()
   return json.loads(results_str)
 
@@ -269,7 +280,7 @@ def _fetch(job_id, out_dir, artifacts=False, logs=False, failed_only=False, **kw
   # Attempt to make the output directory
   try:
     os.makedirs(out_dir)
-  except:
+  except Exception:
     pass
   # Collect links, download at the end
   log_links = []
@@ -385,7 +396,7 @@ def _parallel_extract(paths, out_dir):
 
 def cancel_job(argv):
   job_id = get_job_id_from_args("cancel", argv)
-  url = TEST_MASTER + "/cancel_job?" + urllib.urlencode([("job_id", job_id)])
+  url = make_url("/cancel_job?" + urllib.urlencode([("job_id", job_id)]))
   result_str = urlopen_with_retry(url).read()
   LOG.info("Cancellation: %s" % result_str)
 
