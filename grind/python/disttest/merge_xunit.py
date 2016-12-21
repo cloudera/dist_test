@@ -22,6 +22,11 @@ import sys
 from xml.dom import minidom
 import xml.dom
 from collections import defaultdict
+import codecs
+import logging
+
+logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def _get_in_files(args):
   """
@@ -64,8 +69,13 @@ def merge_xunit(in_files, out_file, ignore_flaky=False, quiet=False):
   if len(in_files) == 0:
     return
 
+  logger.debug("input files are: " + ",".join(in_files))
+  logger.debug("output file is: " + out_file)
+
   first_in = in_files[0]
-  merge_xml = minidom.parse(first_in)
+  open_first_in = codecs.open(first_in, "r", "utf-8")
+  xml_string = open_first_in.read().encode("utf-8")
+  merge_xml = minidom.parseString(xml_string)
   testsuite = merge_xml.firstChild
 
   errors = int(_safe_attribute(testsuite, 'errors', 0))
@@ -150,7 +160,8 @@ def merge_xunit(in_files, out_file, ignore_flaky=False, quiet=False):
   _safe_set_attribute(testsuite, 'time', time)
   _safe_set_attribute(testsuite, 'skipped', skipped)
 
-  merge_xml.writexml(open(out_file, 'w'), indent="\t", newl="\n")
+  merge_xml.writexml(codecs.open(out_file, 'w', encoding="utf-8"),
+                     indent="\t", newl="\n", encoding="utf-8")
 
 def _safe_attribute(testsuite, attribute, default=None):
   if testsuite.hasAttribute(attribute):
@@ -174,6 +185,7 @@ if __name__ == '__main__':
   parser.add_argument("--ignore-flaky", dest="ignore_flaky", action="store_true", help='Whether to ignore failed attempts of flaky tests.')
   parser.add_argument("-q", "--quiet", dest="quiet", action="store_true", help='Print fewer messages to stdout.')
 
+  args = parser.parse_args()
   in_files = _get_in_files(args)
   out_file = _get_out_file(args, in_files)
   print ('Will merge into %s' % out_file)
