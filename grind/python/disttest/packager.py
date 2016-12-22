@@ -2,13 +2,12 @@ import datetime
 import errno
 import fnmatch
 import glob
-import hashlib
-import os
-import json
 import logging
+import os
 import pickle
-import shlex, subprocess
+import shlex
 import shutil
+import subprocess
 import tempfile
 
 import util
@@ -193,7 +192,7 @@ class Packager:
     _MAVEN_REL_ROOT = ".m2/repository"
 
     def __init__(self, maven_project, output_root,
-                 cache_dir=None, extra_deps=None, ignore=None,
+                 cache_dir=None, extra_deps=None, ignore=None, maven_settings=None,
                  maven_flags=None, maven_repo=None, verbose=False):
         self.__maven_project = maven_project
         self.__project_root = maven_project.project_root
@@ -214,6 +213,7 @@ class Packager:
         self.__test_jars = []
         self.__test_dirs = []
         self.__jars = []
+        self.__maven_settings = maven_settings
         self.__maven_repo = maven_repo
         self.__maven_flags = ""
         if maven_flags is not None:
@@ -339,6 +339,12 @@ class Packager:
 
         cached_m2_repo = os.path.join(self.__cached_project_root, Packager._MAVEN_REL_ROOT)
         settings_xml = os.path.join(self.__cached_project_root, "settings.xml")
+
+        # Copy user specified Maven settings.xml
+        if self.__maven_settings:
+            src = os.path.expanduser(self.__maven_settings)
+            logger.info("Select Maven settings file %s", src)
+            shutil.copy(src, settings_xml)
 
         # copy-dependencies
         copy_deps_flags = ""
