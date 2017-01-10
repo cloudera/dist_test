@@ -131,6 +131,7 @@ Per-project Configuration
 * `file_globs`: Specifies additional test dependencies via a comma-delimited list of Unix-style path globs. These globs are interpreted by Python's [glob.iglob](https://docs.python.org/2/library/glob.html#glob.iglob).
 * `file_patterns`: Specifies additional test dependencies via a comma-delimited list of filename patterns. These patterns are interpreted by Python's [fnmatch.fnmatch](https://docs.python.org/2/library/fnmatch.html#fnmatch.fnmatch).
 * `artifact_archive_globs`: Specifies test output to upload after a test has run, via comma-delimited Python glob.iglob glob strings. By default, this matches Surefire's test XML output (`**/surefire-reports/TEST-*.xml`), but it can be modified to also upload additional logs.
+* `java_version`: Chooses the runtime JDK version. Supported values are 7 or 8.
 
 Like the `grind config` command, `pconfig` will generate a default config to the default location (`./grind_project.cfg`) when invoked via `grind pconfig --generate --write`.
 
