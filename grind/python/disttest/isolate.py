@@ -65,7 +65,7 @@ class Isolate:
                  cache_dir=None, extra_deps=None, maven_flags=None, maven_repo=None, verbose=False):
         logger.info("Using output directory " + output_dir)
         self.output_dir = output_dir
-        logging.info("Selecting Java version {}".format(java_version))
+        logger.info("Selecting Java version %s", java_version)
         self.java_version = java_version
         self.maven_project = mavenproject.MavenProject(project_root,
                                                        include_modules=include_modules,

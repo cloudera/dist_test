@@ -434,7 +434,7 @@ class Packager:
                 out.write(line)
                 out.write("\n")
         os.chmod(outpath, 0755)
-        logging.info("Wrote pre-run unpacking script to %s", outpath)
+        logger.info("Wrote pre-run unpacking script to %s", outpath)
 
     def get_relative_output_paths(self):
         """Generate relative paths of files in the output directory."""
