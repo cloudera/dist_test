@@ -142,7 +142,7 @@ As an example, here is Hadoop's `.grind_project.cfg`. Hadoop tests expect a few 
         empty_dirs = ["test/data", "test-dir", "log"]
         file_globs = []
         file_patterns = ["*.so"]
-        java_version = 8
+        java_version = 7
 
 Common issues when onboarding
 -----------------------------
