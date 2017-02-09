@@ -12,6 +12,7 @@ class Config(object):
 
   # MySQL settings
   MYSQL_HOST_CONFIG = ('mysql', 'host', 'MYSQL_HOST')
+  MYSQL_PORT_CONFIG = ('mysql', 'port', 'MYSQL_PORT')
   MYSQL_USER_CONFIG = ('mysql', 'user', 'MYSQL_USER')
   MYSQL_PWD_CONFIG = ('mysql', 'password', 'MYSQL_PWD')
   MYSQL_DB_CONFIG = ('mysql', 'database', 'MYSQL_DB')
@@ -58,6 +59,10 @@ class Config(object):
 
     # MySQL settings
     self.MYSQL_HOST = self._get_with_env_override(*self.MYSQL_HOST_CONFIG)
+    try:
+      self.MYSQL_PORT = int(self._get_with_env_override(*self.MYSQL_PORT_CONFIG))
+    except:
+      self.MYSQL_PORT = 3306
     self.MYSQL_USER = self._get_with_env_override(*self.MYSQL_USER_CONFIG)
     self.MYSQL_PWD = self._get_with_env_override(*self.MYSQL_PWD_CONFIG)
     self.MYSQL_DB = self._get_with_env_override(*self.MYSQL_DB_CONFIG)
