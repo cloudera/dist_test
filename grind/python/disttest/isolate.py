@@ -107,8 +107,7 @@ source environment.source # Init runtime environment
 if [ -d "/usr/lib/jvm/" ]; then
     # linux
     jdks=(/usr/lib/jvm/java-{java_version}-*)
-fi
-if [ -L "/usr/libexec/java_home" ]; then
+elif [ -L "/usr/libexec/java_home" ]; then
     # MAC OS
     jdks=$(/usr/libexec/java_home -v 1.{java_version})
 fi
