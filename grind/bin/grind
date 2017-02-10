@@ -17,12 +17,14 @@ import ConfigParser
 import json
 import logging
 import os
+import random
 import shlex
 import shutil
 import StringIO
 import subprocess
 import sys
 import tempfile
+import time
 
 sys.path = [os.path.realpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../python"))] + sys.path
 from disttest import merge_xunit
@@ -439,11 +441,17 @@ class TestRunner:
         cmd = "%s batcharchive --dump-json=%s --"
         hashes_file = os.path.join(self.output_dir, "hashes.json")
         cmd = cmd % (self.config.isolate_path, hashes_file)
-        logger.debug("Invoking %s", cmd)
-        p = subprocess.Popen(shlex.split(cmd) + i.isolated_files, env=isolate_env)
-        p.wait()
-        if p.returncode != 0:
-            raise Exception("isolate batcharchive failed")
+        for retry in range(0, 3):
+            # retry a couple of times to overcome connection timeouts.
+            logger.debug("Invoking %s", cmd)
+            p = subprocess.Popen(shlex.split(cmd) + i.isolated_files, env=isolate_env)
+            p.wait()
+            if p.returncode != 0:
+                if retry == 2:
+                    raise Exception("isolate batcharchive failed")
+                else:
+                    logger.debug("isolate batcharchive failed with error code %s", p.returncode)
+                    time.sleep(random.randint(10, 60))
 
         # Parse the dumped json file and turn it into task descriptions
         # for dist_test
