@@ -441,13 +441,13 @@ class TestRunner:
         cmd = "%s batcharchive --dump-json=%s --"
         hashes_file = os.path.join(self.output_dir, "hashes.json")
         cmd = cmd % (self.config.isolate_path, hashes_file)
-        for num_retries_remaining in range(3, 0):
+        for num_retries_remaining in range(3, -1, -1):
             # retry a couple of times to overcome connection timeouts.
             logger.debug("Invoking %s", cmd)
             p = subprocess.Popen(shlex.split(cmd) + i.isolated_files, env=isolate_env)
             p.wait()
             if p.returncode != 0:
-                if retry == 1:
+                if num_retries_remaining == 0:
                     raise Exception("isolate batcharchive failed")
                 else:
                     logger.debug("isolate batcharchive failed with error code %s", p.returncode)
