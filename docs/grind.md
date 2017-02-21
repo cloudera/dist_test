@@ -198,7 +198,7 @@ When debugging, it's nice to run a test locally. This can be done as follows:
 1. Run the hash using the isolate client, which will make another temp dir:
 
         $ export ISOLATE_SERVER=http://isolate.cloudera.org:4242
-        $ ./luci-py/run_isolated.py --auth=none --verbose --leak-temp-dir --hash a21ff4f49b208afd9cda89705fef4668c94fe16a
+        $ ./luci-py/run_isolated.py --auth-method=none --verbose --leak-temp-dir --hash a21ff4f49b208afd9cda89705fef4668c94fe16a
         ...
         WARNING  22749    run_isolated(197): Deliberately leaking /tmp/run_tha_testGvhm8E for later examination
 
