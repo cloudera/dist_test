@@ -193,7 +193,7 @@ class Packager:
     _MAVEN_REL_ROOT = ".m2/repository"
 
     def __init__(self, maven_project, output_root,
-                 cache_dir=None, extra_deps=None, ignore=None,
+                 cache_dir=None, extra_deps=None, ignore=None, maven_settings=None,
                  maven_flags=None, maven_repo=None, verbose=False):
         self.__maven_project = maven_project
         self.__project_root = maven_project.project_root
@@ -214,6 +214,7 @@ class Packager:
         self.__test_jars = []
         self.__test_dirs = []
         self.__jars = []
+        self.__maven_settings = maven_settings
         self.__maven_repo = maven_repo
         self.__maven_flags = ""
         if maven_flags is not None:
@@ -381,6 +382,12 @@ class Packager:
         # If the project's manifest does not match the manifest of the project's cached dependencies,
         # we need to regenerate the Maven dependencies since they may be out of date.
         self._regenerate_dependency_cache_if_necessary()
+
+        # Copy user specified Maven settings.xml
+        if self.__maven_settings:
+            src = os.path.expanduser(self.__maven_settings)
+            logger.info("Copy %s to %s", src, self.__cached_project_root)
+            shutil.copy(src, self.__cached_project_root)
 
         # Hardlink from the cache to the output folder
         logger.info("Linking cached Maven dependencies from %s to %s", self.__cached_project_root, self.__output_root)
