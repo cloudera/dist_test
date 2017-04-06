@@ -1,0 +1,13 @@
+FROM golang:1.4
+
+# toddlipcon's fork
+ARG LUCI_GO_COMMIT=6f8431521270754084d85b593604ff46f9ac51b1
+
+## Install LUCI
+RUN mkdir -p $GOPATH/src/github.com/luci && \
+  ( cd $GOPATH/src/github.com/luci && \
+    git clone https://github.com/toddlipcon/luci-go && \
+    cd luci-go && git checkout $LUCI_GO_COMMIT && \
+    go get github.com/luci/luci-go/server/isolateserver )
+
+ENTRYPOINT ["isolateserver"]

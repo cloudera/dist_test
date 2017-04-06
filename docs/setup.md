@@ -9,6 +9,26 @@ You can run your own isolate server, `dist_test` server, slave, beanstalkd, and 
 
 https://github.com/apache/incubator-kudu/blob/master/build-support/dist_test.py
 
+### Docker-based setup
+
+You can use [Docker](https://www.docker.com/) for ease of setting up dist_test.
+This setup depends on [Docker Compose](https://docs.docker.com/compose/).
+Please also refer to the documentation of [Docker Compose](https://docs.docker.com/compose/).
+
+Start containers (`mysql`, `beanstalk`, `isolate`, `master`, `worker`, and `client`) with your AWS credential:
+
+        $ export AWS_ACCESS_KEY=foo AWS_SECRET_KEY=bar TEST_RESULT_BUCKET=your-s3-bucket
+        $ docker-compose up
+
+Then you can execute [a grind test](#client-setup) in the client container:
+
+        $ docker exec disttest_client_1 sh -c 'cd grind/python/disttest/test/test-resources/MultiModuleTestProject && grind test'
+		
+You can access the master UI via `http://localhost:8081/`.
+
+### Manual setup
+If you do not want to use Docker for setting up, you can set up the environment manually.
+
 The first step is to clone and build the required following additional repos we need.
 
 Luci is split into [luci-py](https://github.com/luci/luci-py) and [luci-go](https://github.com/luci/luci-go).

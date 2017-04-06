@@ -1,0 +1,24 @@
+[isolate]
+home=/luci-py
+server=http://isolate:4242
+cache_dir=/tmp/isolate-cache
+
+[aws]
+# you have to provide these environment variables (via docker-compose.yml):
+# - AWS_ACCESS_KEY
+# - AWS_SECRET_KEY
+# - TEST_RESULT_BUCKET
+# you need to create the bucket manually
+
+[mysql]
+host=mysql
+user=dist_test
+password=dist_test
+database=dist_test
+
+[beanstalk]
+host=beanstalk
+
+[dist_test]
+master=http://master:8081/
+allowed_ip_ranges=0.0.0.0/0

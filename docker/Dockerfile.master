@@ -1,0 +1,26 @@
+FROM ubuntu:16.04
+
+ARG LUCI_PY_COMMIT=1f8ba359e84dc7f26b1ba286dfb4e28674efbff4
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  build-essential \
+  git \
+  libmysqlclient-dev \
+  python python-dev python-pip python-setuptools
+
+# Install LUCI
+RUN pip install -t lib google-api-python-client
+RUN cd / && git clone https://github.com/luci/luci-py.git && \
+  cd luci-py && git checkout $LUCI_PY_COMMIT
+
+# Install pip dependency (master)
+RUN pip install jinja2 cherrypy beanstalkc MySQL-python boto PyYAML simple_json netaddr==0.7.18
+
+# Install dist_test
+ADD . /dist_test
+WORKDIR /dist_test
+
+# bake the default config into the image
+RUN cp ./docker/config/dist_test.cnf.sample /root/.dist_test.cnf
+
+# no entrypoint
