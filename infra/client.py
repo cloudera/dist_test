@@ -208,6 +208,8 @@ def submit(argv):
   retcode = do_watch_results(job_id)
   if options.artifacts:
     _fetch(job_id, **vars(options))
+  # print job_id to stdout, so the caller process (grind) can have it
+  print 'job_id=%s' % job_id
   sys.exit(retcode)
 
 def get_job_id_from_args(command, args):

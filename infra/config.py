@@ -30,6 +30,8 @@ class Config(object):
   DIST_TEST_JOB_PATH_CONFIG = ('dist_test', 'job_path', 'DIST_TEST_JOB_PATH')
   DIST_TEST_USER_CONFIG = ('dist_test', 'user', 'DIST_TEST_USER')
   DIST_TEST_PASSWORD_CONFIG = ('dist_test', 'password', 'DIST_TEST_PASSWORD')
+  DIST_TEST_RESULT_SERVER_CONFIG = ('dist_test', 'result_server', 'DIST_TEST_RESULT_SERVER')
+  DIST_TEST_TEMP_DIR_CONFIG = ('dist_test', 'temp_dir', 'DIST_TEST_TEMP_DIR')
 
   def __init__(self, path=None):
     if path is None:
@@ -87,6 +89,9 @@ class Config(object):
     self.log_dir = self.config.get('dist_test', 'log_dir')
     # Make the log directory if it doesn't exist
     Config.mkdir_p(self.log_dir)
+    # dist_test result server settings
+    self.DIST_TEST_RESULT_SERVER = self._get_with_env_override(*self.DIST_TEST_RESULT_SERVER_CONFIG)
+    self.DIST_TEST_TEMP_DIR = self._get_with_env_override(*self.DIST_TEST_TEMP_DIR_CONFIG)
 
     self.SERVER_ACCESS_LOG = os.path.join(self.log_dir, "server-access.log")
     self.SERVER_ERROR_LOG = os.path.join(self.log_dir, "server-error.log")
@@ -134,6 +139,9 @@ class Config(object):
 
   def ensure_dist_test_configured(self):
     self._ensure_configs([self.DIST_TEST_MASTER_CONFIG])
+
+  def ensure_result_server_configured(self):
+    self._ensure_configs([self.DIST_TEST_RESULT_SERVER_CONFIG])
 
   def _ensure_configs(self, configs):
     for config in configs:

@@ -316,7 +316,8 @@ class DistTestServer(object):
     if result['total_groups'] == result['finished_groups']:
       result['status'] = "finished"
       finish_time = max([t["complete_timestamp"] for t in tasks])
-      stop = finish_time
+      if finish_time is not None:
+        stop = finish_time
     runtime = stop - submit_time
 
     # Compute sum of failed tasks in each flaky group

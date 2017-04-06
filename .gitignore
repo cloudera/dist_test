@@ -1,5 +1,6 @@
 server-env
 slave-env
+rs-env
 logs
 *.swp
 *.pyc

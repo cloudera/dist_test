@@ -64,6 +64,7 @@ Next, create a configuration file at `~/.dist_test.cnf` that looks like the foll
 
         [mysql]
         host=localhost
+        port=3306
         user=<FILL IN HERE>
         password=<FILL IN HERE>
         database=<FILL IN HERE>
@@ -74,6 +75,8 @@ Next, create a configuration file at `~/.dist_test.cnf` that looks like the foll
         [dist_test]
         master=http://localhost:8081/
         allowed_ip_ranges=0.0.0.0/0
+        #result_server=http://localhost:8080/ (Optional. Only used for test result submission)
+        #temp_dir=/tmp (Optional. Only used by the result server)
 
 Adjust `isolate.home` to point within your luci-py repo. The client folder should have a `run_isolated.py` file that is the key functionality we're using.
 
@@ -87,6 +90,10 @@ Start the master and one or more slaves:
 
         $ ./bin/server
         $ ./bin/slave
+
+Optionally, start the result server, if test result submission is needed:
+
+        $ ./bin/result_server
 
 `dist_test` will create the required tables in MySQL on first run.
 

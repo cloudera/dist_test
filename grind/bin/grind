@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import random
+import re
 import shlex
 import shutil
 import StringIO
@@ -27,6 +28,7 @@ import tempfile
 import time
 
 sys.path = [os.path.realpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../python"))] + sys.path
+sys.path = [os.path.join(os.path.realpath(os.path.dirname(__file__)), "../../dist_test")] + sys.path
 from disttest import merge_xunit
 from disttest import isolate
 from disttest import packager
@@ -373,6 +375,10 @@ class TestRunner:
                             action='store_true',
                             dest="dry_run",
                             help="Do not actually run tests or perform remote operations. Useful for debugging.")
+        parser.add_argument('--submit-result',
+                            action='store_true',
+                            dest="submit_result",
+                            help="Submit the test result to the result server, for failure rate calculation.")
 
     @staticmethod
     def print_module_tree(root_module, prefix=""):
@@ -462,6 +468,7 @@ class TestRunner:
         if self.args.artifacts:
             artifacts_flags = shlex.split("--artifacts --output-dir grind-test-results")
 
+        out = None
         if self.args.dry_run:
             logging.info("Dry run, skipping test submission")
         else:
@@ -471,8 +478,8 @@ class TestRunner:
                    ["--name", os.path.basename(self.project_dir), tasks_file]
             logger.info("Calling %s", " ".join(cmd))
 
-            p = subprocess.Popen(cmd, env=isolate_env)
-            p.wait()
+            p = subprocess.Popen(cmd, env=isolate_env, stdout=subprocess.PIPE)
+            out, _ = p.communicate()
             # If we downloaded artifacts, then merge the results
             if self.args.artifacts:
                 in_files = []
@@ -481,6 +488,11 @@ class TestRunner:
                         if f.startswith("TEST-") and f.endswith(".xml"):
                             in_files.append(os.path.join(root, f))
                 merge_xunit.merge_xunit(in_files, "test_results.xml", ignore_flaky=True, quiet=True)
+                # TODO: support submitting single file to the result server
+                # submit_results.add_one_result("test_results.xml")
+            # else:
+                # TODO: support submitting a dir of test result xmls to the result server
+                # submit_results.add_one_result(self.output_dir)
             # Bubble up the return code from dist_test
             if p.returncode != 0:
                 if p.returncode == 88:
@@ -488,6 +500,28 @@ class TestRunner:
                     sys.exit(p.returncode)
                 else:
                     raise Exception("dist_test client submit failed")
+
+        if self.args.submit_result:
+            if out is None:
+              # both --dry-run and --submit-result are given
+              logging.info("No output from job submission, skipping result submission")
+              return
+            job_id = re.search(r'job_id=(.*)', out)
+            if job_id is None:
+              raise Exception("job_id not found for this run, cannot submit result")
+            job_id = job_id.group(1)
+            if job_id is None:
+              raise Exception("job_id not found, cannot submit result")
+            # submit with jobid.
+            grind_dir =  os.path.abspath(os.path.join(self.config.dist_test_client_path, "../.."))
+            submit_script_path = os.path.join(grind_dir, "infra/submit_results.py")
+            cmd = [submit_script_path, "--jobid", job_id]
+            logger.info("Calling %s", " ".join(cmd))
+            p = subprocess.Popen(cmd, env=isolate_env)
+            p.wait()
+            if p.returncode != 0:
+              logger.error("Test result submission failed! %s", p.returncode)
+              sys.exit(p.returncode)
 
     def cleanup(self):
         if self.args.leak_temp:

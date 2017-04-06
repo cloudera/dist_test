@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -e
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+ENV="$DIR/../env"
+mkdir -p $ENV
+
+env_name="rs-env"
+
+# Check the git hash of when the virtualenv was created.
+# If it differs, wipe and reinitialize, saving a new hash.
+pushd "$DIR"
+git_hash=$(git rev-parse HEAD)
+popd
+hash_file="$ENV/$env_name/git-hash"
+if [[ ! -e "$hash_file" || "$git_hash" != "$(cat $hash_file)" ]]; then
+    echo "Initializing virtualenv"
+    pushd "$ENV"
+    virtualenv "$env_name"
+    for package in beanstalkc cherrypy jinja2 MySQL-python boto glob2 PyYAML; do
+        "./$env_name/bin/pip" install $package
+    done
+    virtualenv --relocatable "$env_name"
+    echo "$git_hash" > "$hash_file"
+    popd
+fi
+
+# Activate the virtualenv
+source "$ENV/$env_name/bin/activate"
+
+# Execute
+exec "$DIR/../infra/result_server.py" "$@"
