@@ -29,11 +29,9 @@ import zipfile
 
 from config import Config
 import dist_test
+import file_path
 
-RUN_ISOLATED_OUT_RE = re.compile(r'\[run_isolated_out_hack\](.+?)\[/run_isolated_out_hack\]',
-                                 re.DOTALL)
 LOG = None
-
 
 
 class RetryCache(object):
@@ -114,30 +112,6 @@ class Slave(object):
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
-  def parse_test_dir(self, stderr):
-    # Find the test_dir for this invocation of run_isolated.py
-    # FIXME: this is done by parsing the stderr of invoking run_isolated.py, which is
-    # far from bullet-proof.
-    #
-    # Example:
-    # WARNING   3420    run_isolated(197): Deliberately leaking /tmp/run_tha_test1r2oKG for later examination
-    test_dir = None
-    pattern = re.compile(r"WARNING[ ]+[\d]+[ ]+run_isolated.*: Deliberately leaking (.*) for later examination")
-    for line in stderr.splitlines():
-      m = pattern.match(line)
-      if m is not None:
-        test_dir = m.group(1)
-        # Do not break early, we want the last stderr line that matches
-
-    if test_dir is None:
-      LOG.warn("No run_tha_test directory found!")
-      return None
-    if not os.path.exists(test_dir):
-      LOG.warn("Parsed run_tha_test directory %s does not actually exist!" % test_dir)
-      return None
-
-    return test_dir
-
   def make_archive(self, task, test_dir):
     # Return early if no test_dir is specified
     if test_dir is None:
@@ -186,25 +160,135 @@ class Slave(object):
 
     return archive_buffer
 
+  def download_task_files(self, task, test_dir):
+    """
+    Download all of the files associated with 'task' into 'test_dir'.
+    The directory is expected to already exist.
+    """
+    env = os.environ.copy()
+    # Make isolateserver run in 'bot' mode. This prevents it from trying
+    # to use oauth to authenticate.
+    env['SWARMING_HEADLESS'] = '1'
 
-  def run_task(self, task):
-    cmd = [os.path.join(self.config.ISOLATE_HOME, "run_isolated.py"),
+    download_cmd_base = [os.path.join(self.config.ISOLATE_HOME, "isolateserver.py"),
+           "download",
            "--isolate-server=%s" % self.config.ISOLATE_SERVER,
            "--cache=%s" % self.cache_dir,
-           "--verbose",
-           "--leak-temp",
-           "--hash", task.task.isolate_hash]
+           "--verbose"]
+
+    LOG.info("Downloading files from isolate...")
+    download_cmd = download_cmd_base + [
+           "-i", task.task.isolate_hash,
+           "--target", test_dir]
+    rc, stdout, stderr = self.run_command_and_touch_task(
+           download_cmd, task, timeout=600, env=env)
+    if rc != 0:
+      raise Exception("failed to download task files: %s" % stderr)
+
+    # The above doesn't download the '.isolated' file itself. We need
+    # this file since it describes the task working directory, command
+    # line, etc.
+    LOG.info("Downloading isolated file from isolate...")
+    isolated_path = os.path.join(test_dir, "task.isolated")
+    download_cmd = download_cmd_base + ["-f", task.task.isolate_hash, isolated_path]
+    rc, stdout, stderr = self.run_command_and_touch_task(
+           download_cmd, task, timeout=600, env=env)
+    if rc != 0:
+      raise Exception("failed to download task files: %s" % stderr)
+
+    # We expect to have all of the files that we download writable, but
+    # 'isolateserver.py download' defaults to not writable.
+    file_path.make_tree_writeable(test_dir)
+    return json.load(file(isolated_path))
+
+
+  def run_task(self, task):
+    """ Download the files, run the task, and upload results. """
     if not self.results_store.mark_task_running(task.task):
       LOG.info("Task %s canceled", task.task.description)
       return
-    # Make run_isolated run in 'bot' mode. This prevents it from trying
-    # to use oauth to authenticate.
-    env = os.environ.copy()
-    env['SWARMING_HEADLESS'] = '1'
 
+    start_time = time.time()
+    stdout = None
+    stderr = None
+    rc = None
+    downloaded = False
+    artifact_archive = None
+
+    # First download everything.
+    test_dir = file_path.make_temp_dir("dist-test-task", self.cache_dir)
+    try:
+      isolated_info = self.download_task_files(task, test_dir)
+      downloaded = True
+    except Exception, e:
+      # If we fail to download, make sure to mark the task as failed.
+      # It's possible that the isolate file itself is invalid, in which
+      # case we don't want the task to get "stuck" in the queue forever
+      # bouncing among slaves.
+      rc = -2
+      stderr = str(e)
+
+    # Then run the actual task, unless it already failed downloading above.
+    if downloaded:
+      rc, stdout, stderr = self.run_command_and_touch_task(
+          isolated_info['command'], task,
+          timeout=task.task.timeout,
+          cwd=os.path.join(test_dir, isolated_info['relative_cwd']))
+
+      # Don't upload logs from successful builds
+      if rc == 0:
+        stdout = None
+        stderr = None
+
+      artifact_archive = self.make_archive(task, test_dir)
+
+    end_time = time.time()
+    duration_secs = end_time - start_time
+
+    self.results_store.mark_task_finished(task.task,
+                                          result_code=rc,
+                                          stdout=stdout,
+                                          stderr=stderr,
+                                          artifact_archive=artifact_archive,
+                                          duration_secs=duration_secs)
+
+    # Do cleanup of temp files
+    if test_dir is not None:
+      LOG.info("Removing test directory %s" % test_dir)
+      shutil.rmtree(test_dir)
+    if artifact_archive is not None:
+      artifact_archive.close()
+
+    if rc != 0:
+      # If there have been too many failures, cancel the job
+      num_failed = self.results_store.count_num_failed_tasks(task.task)
+      if num_failed > 100:
+        LOG.info("Job %s has too many failed tasks (%d), cancelling" % (task.task.job_id, num_failed))
+        self.cancel_job(task.task.job_id)
+      # Retry if non-zero exit code and have retries remaining
+      elif task.task.attempt < task.task.max_retries:
+        self.submit_retry_task(task)
+
+
+  def run_command_and_touch_task(self, cmd, task, timeout, **kwargs):
+    """
+    Run the command 'cmd' with the given timeout 'timeout'.
+
+    While the command is running, periodically touches 'task in the
+    queue so that it doesn't get re-assigned to another slave.
+
+    Parameters
+    ----------
+    cmd : array
+        The command to run (suitable for passing to subprocess.Popen)
+    task : Task
+        The task to periodically touch.
+    timeout : int
+        The timeout with which to run the given command.
+    """
     LOG.info("Running command: %s", repr(cmd))
     p = subprocess.Popen(
-      cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+      cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
     pipes = [p.stdout, p.stderr]
     self._set_flags(p.stdout)
     self._set_flags(p.stderr)
@@ -212,10 +296,8 @@ class Slave(object):
     stdout = ""
     stderr = ""
 
-    timeout = task.task.timeout
     last_touch = time.time()
-    start_time = last_touch
-    kill_term_time = start_time + timeout
+    kill_term_time = last_touch + timeout
     kill_kill_time = kill_term_time + 5
     while True:
       rlist, wlist, xlist = select.select(pipes, [], pipes, 2)
@@ -245,51 +327,7 @@ class Slave(object):
           pass
         last_touch = time.time()
 
-    rc = p.wait()
-
-    output_archive_hash = None
-    m = RUN_ISOLATED_OUT_RE.search(stdout)
-    if m:
-      isolated_out = json.loads(m.group(1))
-      output_archive_hash = isolated_out['hash']
-
-    test_dir = self.parse_test_dir(stderr)
-    artifact_archive = None
-
-    # Don't upload logs from successful builds
-    if rc == 0:
-      stdout = None
-      stderr = None
-
-    artifact_archive = self.make_archive(task, test_dir)
-
-    end_time = time.time()
-    duration_secs = end_time - start_time
-
-    self.results_store.mark_task_finished(task.task,
-                                          output_archive_hash=output_archive_hash,
-                                          result_code=rc,
-                                          stdout=stdout,
-                                          stderr=stderr,
-                                          artifact_archive=artifact_archive,
-                                          duration_secs=duration_secs)
-
-    # Do cleanup of temp files
-    if test_dir is not None:
-      LOG.info("Removing test directory %s" % test_dir)
-      shutil.rmtree(test_dir)
-    if artifact_archive is not None:
-      artifact_archive.close()
-
-    if rc != 0:
-      # If there have been too many failures, cancel the job
-      num_failed = self.results_store.count_num_failed_tasks(task.task)
-      if num_failed > 100:
-        LOG.info("Job %s has too many failed tasks (%d), cancelling" % (task.task.job_id, num_failed))
-        self.cancel_job(task.task.job_id)
-      # Retry if non-zero exit code and have retries remaining
-      elif task.task.attempt < task.task.max_retries:
-        self.submit_retry_task(task)
+    return p.wait(), stdout, stderr
 
   def cancel_job(self, job_id):
     url = self.config.DIST_TEST_MASTER + "/cancel_job?job_id=" + job_id

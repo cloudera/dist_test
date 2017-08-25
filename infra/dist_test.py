@@ -200,7 +200,6 @@ class ResultsStore(object):
         start_timestamp timestamp null,
         hostname varchar(100),
         complete_timestamp timestamp null,
-        output_archive_hash char(40),
         stdout_abbrev varchar(100),
         stderr_abbrev varchar(100),
         stdout_key varchar(256),
@@ -251,7 +250,7 @@ class ResultsStore(object):
         complete_timestamp = now()
       WHERE job_id = %(job_id)s AND status IS NULL""", parms)
     
-  def mark_task_finished(self, task, result_code, stdout, stderr, artifact_archive, output_archive_hash, duration_secs):
+  def mark_task_finished(self, task, result_code, stdout, stderr, artifact_archive, duration_secs):
     stdout_key = None
     stdout_abbrev = ""
     stderr_key = None
@@ -279,7 +278,6 @@ class ResultsStore(object):
                  job_id=task.job_id,
                  task_id=task.task_id,
                  attempt=task.attempt,
-                 output_archive_hash=output_archive_hash,
                  stdout_key=stdout_key,
                  stdout_abbrev=stdout_abbrev,
                  stderr_key=stderr_key,
@@ -295,7 +293,6 @@ class ResultsStore(object):
         stderr_key = %(stderr_key)s,
         stderr_abbrev = %(stderr_abbrev)s,
         artifact_archive_key = %(artifact_archive_key)s,
-        output_archive_hash = %(output_archive_hash)s,
         complete_timestamp = now()
       WHERE job_id = %(job_id)s AND task_id = %(task_id)s AND attempt = %(attempt)s""", parms)
 
