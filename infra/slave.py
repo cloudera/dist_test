@@ -33,6 +33,9 @@ import file_path
 
 LOG = None
 
+# The number of times each task will retry when trying to download its
+# dependencies.
+NUM_DOWNLOAD_ATTEMPTS_PER_TASK = 3
 
 class RetryCache(object):
   """Time-based and count-based cache to avoid running retried tasks
@@ -201,6 +204,16 @@ class Slave(object):
     file_path.make_tree_writeable(test_dir)
     return json.load(file(isolated_path))
 
+  def download_task_files_with_retries(self, *args, **kwargs):
+    """ Calls download_task_files(...) with automatic retries on failure """
+    for rem_attempts in reversed(xrange(NUM_DOWNLOAD_ATTEMPTS_PER_TASK)):
+      try:
+        return self.download_task_files(*args, **kwargs)
+      except:
+        LOG.warning("failed to download task files. %d tries remaining" % rem_attempts, exc_info=True)
+        if rem_attempts == 0:
+          raise
+        time.sleep(5)
 
   def run_task(self, task):
     """ Download the files, run the task, and upload results. """
@@ -218,7 +231,7 @@ class Slave(object):
     # First download everything.
     test_dir = file_path.make_temp_dir("dist-test-task", self.cache_dir)
     try:
-      isolated_info = self.download_task_files(task, test_dir)
+      isolated_info = self.download_task_files_with_retries(task, test_dir)
       downloaded = True
     except Exception, e:
       # If we fail to download, make sure to mark the task as failed.
