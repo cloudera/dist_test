@@ -45,6 +45,7 @@ class Task(object):
     # The number of times this task will be retried.
     # The default value of 0 means the task will not be retried.
     self.max_retries = d.get('max_retries', 0)
+    self.docker_image = d.get('docker_image')
     self.artifact_archive_globs = d.get('artifact_archive_globs', [])
 
   def to_json(self):
@@ -58,6 +59,8 @@ class Task(object):
       max_retries=self.max_retries,
       artifact_archive_globs=self.artifact_archive_globs,
     )
+    if self.docker_image is not None:
+      job_struct['docker_image'] = self.docker_image
     return json.dumps(job_struct)
 
   def get_retry_id(self):

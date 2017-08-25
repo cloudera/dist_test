@@ -243,10 +243,24 @@ class Slave(object):
 
     # Then run the actual task, unless it already failed downloading above.
     if downloaded:
+      if task.task.docker_image:
+        cmd = ["docker", "run",
+               # Map the test dir into /isolate-dir in the docker container.
+               "--volume", "%s:/isolate-dir" % test_dir,
+               "--workdir", os.path.join("/isolate-dir", isolated_info['relative_cwd']),
+               "--user", str(os.geteuid()),
+               task.task.docker_image] + isolated_info['command']
+        # No need to run 'docker' with any particular cwd -- the above command line
+        # sets the appropriate within-container cwd.
+        cwd = None
+      else:
+        cmd = isolated_info['command']
+        cwd = os.path.join(test_dir, isolated_info['relative_cwd'])
+
       rc, stdout, stderr = self.run_command_and_touch_task(
-          isolated_info['command'], task,
+          cmd, task,
           timeout=task.task.timeout,
-          cwd=os.path.join(test_dir, isolated_info['relative_cwd']))
+          cwd=cwd)
 
       # Don't upload logs from successful builds
       if rc == 0:
