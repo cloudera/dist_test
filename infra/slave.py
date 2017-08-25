@@ -281,9 +281,26 @@ class Slave(object):
     if artifact_archive is not None:
       artifact_archive.close()
 
-    # Retry if non-zero exit code and have retries remaining
-    if rc != 0 and task.task.attempt < task.task.max_retries:
-      self.submit_retry_task(task)
+    if rc != 0:
+      # If there have been too many failures, cancel the job
+      num_failed = self.results_store.count_num_failed_tasks(task.task)
+      if num_failed > 100:
+        LOG.info("Job %s has too many failed tasks (%d), cancelling" % (task.task.job_id, num_failed))
+        self.cancel_job(task.task.job_id)
+      # Retry if non-zero exit code and have retries remaining
+      elif task.task.attempt < task.task.max_retries:
+        self.submit_retry_task(task)
+
+  def cancel_job(self, job_id):
+    url = self.config.DIST_TEST_MASTER + "/cancel_job?job_id=" + job_id
+    LOG.info("Cancelling job %s via url %s" % (job_id, url))
+    try:
+        result_str = urllib2.urlopen(url).read()
+        result = json.loads(result_str)
+        if result.get('status') != 'SUCCESS':
+            sys.stderr.write("Unable to cancel job %s: %s" % (job_id, repr(result)))
+    except Exception as e:
+        sys.stderr.write("Unable to cancel job %s: %s\n" % (job_id, e))
 
   def submit_retry_task(self, task):
     task_json = task.task.to_json()
@@ -292,7 +309,7 @@ class Slave(object):
     result_str = urllib2.urlopen(url, data=form_data).read()
     result = json.loads(result_str)
     if result.get('status') != 'SUCCESS':
-      sys.err.println("Unable to submit retry task: %s" % repr(result))
+      sys.stderr.write("Unable to submit retry task: %s\n" % repr(result))
     # Add to the retry cache for anti-affinity
     self.retry_cache.put(task.task.get_retry_id())
 

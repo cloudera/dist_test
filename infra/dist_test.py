@@ -197,9 +197,9 @@ class ResultsStore(object):
         max_retries tinyint not null default 0,
         description varchar(100) not null,
         submit_timestamp timestamp not null default current_timestamp,
-        start_timestamp timestamp,
+        start_timestamp timestamp null,
         hostname varchar(100),
-        complete_timestamp timestamp,
+        complete_timestamp timestamp null,
         output_archive_hash char(40),
         stdout_abbrev varchar(100),
         stderr_abbrev varchar(100),
@@ -305,6 +305,16 @@ class ResultsStore(object):
         VALUES (%(description)s, %(task_id)s, %(duration_secs)s)
       ON DUPLICATE KEY
         UPDATE task_id = %(task_id)s, duration_secs = (duration_secs * 0.7) + (%(duration_secs)s * 0.3)""", parms)
+
+  def count_num_failed_tasks(self, task):
+    parms = dict(job_id=task.job_id)
+    c = self._execute_query("""
+      SELECT COUNT(*) as count FROM dist_test_tasks WHERE
+        job_id = %(job_id)s AND
+        status != 0
+    """, parms)
+    row = c.fetchone()
+    return row["count"]
 
   def generate_output_link(self, key):
     expiry = 60 * 60 * 24 # link should last 1 day
