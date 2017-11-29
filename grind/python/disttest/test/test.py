@@ -184,7 +184,7 @@ class TestIsolate(unittest.TestCase):
         # Write a file specifying the extra dependencies
         patterns = ["*.properties"]
         deps = packager.ExtraDependencies([], patterns, [])
-        i = isolate.Isolate(TEST_PROJECT_PATH, self.output_dir,
+        i = isolate.Isolate(TEST_PROJECT_PATH, self.output_dir, 1.8,
                             extra_deps=deps)
         i.package()
         i.generate()
