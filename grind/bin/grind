@@ -364,6 +364,10 @@ class TestRunner:
                             type=int, choices=supported_java_versions,
                             help="Select Java version. Default to project config option 'java_version' or %d."
                                  % default_java_version)
+        parser.add_argument('-sto', '--store-txt-output',
+                            action='store_true',
+                            dest='store_txt_output',
+                            help="Include surefire test txt output in artifact zip")
         # Util / debug
         parser.add_argument('--leak-temp',
                             action='store_true',
@@ -397,6 +401,9 @@ class TestRunner:
 
         java_version = self.args.java_version or self.project_config.java_version
         assert java_version in supported_java_versions
+
+        if self.args.store_txt_output is True:
+         self.project_config.artifact_archive_globs = ["**/surefire-reports/TEST-*.xml", "**/surefire-reports/*.txt"]
 
         maven_flags = os.environ.get('GRIND_MAVEN_FLAGS')
         maven_repo = os.environ.get('GRIND_MAVEN_REPO')
