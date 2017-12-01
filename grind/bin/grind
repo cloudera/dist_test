@@ -403,7 +403,7 @@ class TestRunner:
         assert java_version in supported_java_versions
 
         if self.args.store_txt_output is True:
-         self.project_config.artifact_archive_globs = ["**/surefire-reports/TEST-*.xml", "**/surefire-reports/*.txt"]
+            self.project_config.artifact_archive_globs.append("**/surefire-reports/*.txt")
 
         maven_flags = os.environ.get('GRIND_MAVEN_FLAGS')
         maven_repo = os.environ.get('GRIND_MAVEN_REPO')
