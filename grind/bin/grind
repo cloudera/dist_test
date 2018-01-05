@@ -382,21 +382,23 @@ class TestRunner:
             TestRunner.print_module_tree(module, prefix = subprefix)
 
     def run(self):
+        java_version = self.args.java_version or self.project_config.java_version
+        assert java_version in supported_java_versions
+
         if self.args.list_modules:
             # Do not include any modules, this way we skip looking for tests
-            i = isolate.Isolate(self.project_dir, self.output_dir, include_modules=[])
+            i = isolate.Isolate(self.project_dir, self.output_dir,
+                                java_version=java_version,
+                                include_modules=[])
             print "Found %s modules in directory %s" \
                     % (len(i.maven_project.modules), i.maven_project.project_root)
             TestRunner.print_module_tree(i.maven_project.root_module)
         else:
-            self.run_tests()
+            self.run_tests(java_version=java_version)
 
-    def run_tests(self):
+    def run_tests(self, java_version):
         if self.args.num <= 0:
             raise Exception("--num must be greater than 0 (got %s)" % self.args.num)
-
-        java_version = self.args.java_version or self.project_config.java_version
-        assert java_version in supported_java_versions
 
         maven_flags = os.environ.get('GRIND_MAVEN_FLAGS')
         maven_repo = os.environ.get('GRIND_MAVEN_REPO')
