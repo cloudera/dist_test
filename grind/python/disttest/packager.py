@@ -364,6 +364,7 @@ class Packager:
 
         # TODO: add support for specifying additional dependencies not caught by above
         # This is required if we ever want to be able to invoke tests in offline mode.
+        # https://maven.apache.org/plugins/maven-dependency-plugin/go-offline-mojo.html may be helpful.
         # Need to make this generalized, per-project config file?
 
     @staticmethod
