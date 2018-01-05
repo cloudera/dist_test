@@ -384,7 +384,8 @@ class TestRunner:
     def run(self):
         if self.args.list_modules:
             # Do not include any modules, this way we skip looking for tests
-            i = isolate.Isolate(self.project_dir, self.output_dir, include_modules=[])
+            maven_flags = os.environ.get('GRIND_MAVEN_FLAGS')
+            i = isolate.Isolate(self.project_dir, self.output_dir, include_modules=[], maven_flags=maven_flags)
             print "Found %s modules in directory %s" \
                     % (len(i.maven_project.modules), i.maven_project.project_root)
             TestRunner.print_module_tree(i.maven_project.root_module)
