@@ -243,11 +243,12 @@ class Slave(object):
 
     # Then run the actual task, unless it already failed downloading above.
     if downloaded:
+      rel_cwd = isolated_info.get('relative_cwd', '')
       if task.task.docker_image:
         cmd = ["docker", "run",
                # Map the test dir into /isolate-dir in the docker container.
                "--volume", "%s:/isolate-dir" % test_dir,
-               "--workdir", os.path.join("/isolate-dir", isolated_info['relative_cwd']),
+               "--workdir", os.path.join("/isolate-dir", rel_cwd),
                "--user", str(os.geteuid()),
                task.task.docker_image] + isolated_info['command']
         # No need to run 'docker' with any particular cwd -- the above command line
@@ -255,8 +256,13 @@ class Slave(object):
         cwd = None
       else:
         cmd = isolated_info['command']
-        cwd = os.path.join(test_dir, isolated_info['relative_cwd'])
+        cwd = os.path.join(test_dir, rel_cwd)
 
+      # The command is always a path to an executable in the downloaded bundle
+      # rather than something like 'bash' expected to be on the PATH. However,
+      # '.' isn't usually on the path, so we need to ensure that the command
+      # is an absoluate path.
+      file_path.ensure_command_has_abs_path(cmd, cwd)
       rc, stdout, stderr = self.run_command_and_touch_task(
           cmd, task,
           timeout=task.task.timeout,

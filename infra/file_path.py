@@ -51,6 +51,15 @@ def make_tree_writeable(root):
       for dirname in dirnames:
         set_read_only(os.path.join(dirpath, dirname), False)
 
+def ensure_command_has_abs_path(command, cwd):
+  """Ensures that an isolate command uses absolute path.
+
+  This is needed since isolate can specify a command relative to 'cwd' and
+  subprocess.call doesn't consider 'cwd' when searching for executable.
+  """
+  if not os.path.isabs(command[0]):
+    command[0] = os.path.abspath(os.path.join(cwd, command[0]))
+
 def is_same_filesystem(path1, path2):
   """Returns True if both paths are on the same filesystem.
 
