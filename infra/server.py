@@ -221,6 +221,8 @@ class DistTestServer(object):
   @cherrypy.tools.no_caching()
   def job_status(self, job_id):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
+    if len(tasks) == 0:
+      return "No tasks found for specified job_id %s" % job_id
     job_summary, task_groups = self._summarize_tasks(tasks, json_compatible=True)
     return job_summary
 
