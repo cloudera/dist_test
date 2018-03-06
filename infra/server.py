@@ -221,6 +221,8 @@ class DistTestServer(object):
   @cherrypy.tools.no_caching()
   def job_status(self, job_id):
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
+    if len(tasks) == 0:
+      return {"error": "Did not fetch any tasks for specified job_id %s" % job_id}
     job_summary, task_groups = self._summarize_tasks(tasks, json_compatible=True)
     return job_summary
 
@@ -236,7 +238,7 @@ class DistTestServer(object):
   @cherrypy.tools.no_caching()
   def tasks(self, job_id, status=None):
     if status not in (None, "failed", "succeeded", "finished"):
-      return "Unknown status type"
+      return {"error": "Unknown status type %s" % status}
     # fetch all tasks and filter by status. By default (None) return all tasks.
     tasks = self.results_store.fetch_task_rows_for_job(job_id)
     filtered = tasks
