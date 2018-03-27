@@ -26,6 +26,7 @@ config = config.Config()
 config.ensure_dist_test_configured()
 TEST_MASTER = config.DIST_TEST_MASTER
 LAST_JOB_PATH = config.DIST_TEST_JOB_PATH
+URL_TIMEOUT = config.DIST_TEST_URL_TIMEOUT
 RED = "\x1b[31m"
 YELLOW = "\x1b[33m"
 GREEN = "\x1b[32m"
@@ -110,13 +111,18 @@ def urlopen_with_retry(*args, **kwargs):
 
   while True:
     try:
-      return urllib2.urlopen(*args, **kwargs)
-    except Exception:
+      if URL_TIMEOUT is None:
+        return urllib2.urlopen(*args, **kwargs)
+      else:
+        LOG.info("Connecting with timeout=%s" % URL_TIMEOUT)
+        return urllib2.urlopen(*args, timeout=URL_TIMEOUT, **kwargs)
+    except Exception as e:
       if attempt == max_attempts:
           raise
       attempt += 1
       LOG.info("Failed to contact server, will retry in %d seconds (attempt %d of %d)",
                sleep_time, attempt, max_attempts)
+      LOG.info("Last exception is: %s" % e)
       time.sleep(sleep_time)
 
 

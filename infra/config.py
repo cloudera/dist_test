@@ -30,6 +30,7 @@ class Config(object):
   DIST_TEST_JOB_PATH_CONFIG = ('dist_test', 'job_path', 'DIST_TEST_JOB_PATH')
   DIST_TEST_USER_CONFIG = ('dist_test', 'user', 'DIST_TEST_USER')
   DIST_TEST_PASSWORD_CONFIG = ('dist_test', 'password', 'DIST_TEST_PASSWORD')
+  DIST_TEST_URL_TIMEOUT_CONFIG = ('dist_test', 'url_timeout', 'DIST_TEST_URL_TIMEOUT')
 
   def __init__(self, path=None):
     if path is None:
@@ -79,6 +80,9 @@ class Config(object):
       self.DIST_TEST_JOB_PATH = os.path.expanduser("~/.dist-test-last-job")
     self.DIST_TEST_USER = self._get_with_env_override(*self.DIST_TEST_USER_CONFIG)
     self.DIST_TEST_PASSWORD = self._get_with_env_override(*self.DIST_TEST_PASSWORD_CONFIG)
+    self.DIST_TEST_URL_TIMEOUT = self._get_with_env_override(*self.DIST_TEST_URL_TIMEOUT_CONFIG)
+    if self.DIST_TEST_URL_TIMEOUT  is not None:
+      self.DIST_TEST_URL_TIMEOUT = float(self.DIST_TEST_URL_TIMEOUT)
 
     # dist_test master configs (in the 'dist_test' section)
     self.DIST_TEST_ALLOWED_IP_RANGES = self.config.get('dist_test', 'allowed_ip_ranges')
