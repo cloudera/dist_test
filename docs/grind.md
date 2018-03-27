@@ -88,6 +88,7 @@ The `grind config` command lets you display your current configuration, or gener
 * `dist_test_client_path`: The path to `client.py` within your checked out `dist_test` repository.
 * `dist_test_user`: Your username, if the dist test server requires authentication. This can be overridden by the `DIST_TEST_USER` environment variable.
 * `dist_test_password`: Your password, if the dist test server requires authentication. This can be overridden by the `DIST_TEST_PASSWORD` environment variable.
+* `dist_test_url_timeout`: The timeout value when sending URL requests to the dist-test server. This can be overridden by the `DIST_TEST_URL_TIMEOUT` environment variable.
 * `isolate_path`: Path to the isolate binary, this is used to generate the isolate task descriptions
 * `grind_temp_dir`: Where grind will keep per-invocation data. This should be on the same hard disk as the `grind_cache_dir` to enable hardlinking.
 * `grind_cache_dir`: Where grind will cached per-project dependency sets. This greatly speeds up repeated grind invocations. This should be on the same hard disk as the `grind_cache_dir` to enable hardlinking.
@@ -121,6 +122,11 @@ This override may cause Grind to fail because the local repository will not exis
 ##### DIST_TEST_USER and DIST_TEST_PASSWORD
 
 As mentioned above, grind respects the `DIST_TEST_USER` and `DIST_TEST_PASSWORD` environment variables.
+
+##### DIST_TEST_URL_TIMEOUT
+
+The timeout value when sending URL requests to the dist-test server. Defaults to the socket's [global default timeout](https://docs.python.org/2/library/socket.html#socket.getdefaulttimeout).
+As mentioned above, grind respects the `DIST_TEST_URL_TIMEOUT` environment variable.
 
 Per-project Configuration
 ------------
