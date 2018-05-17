@@ -114,7 +114,6 @@ def urlopen_with_retry(*args, **kwargs):
       if URL_TIMEOUT is None:
         return urllib2.urlopen(*args, **kwargs)
       else:
-        LOG.info("Connecting with timeout=%s" % URL_TIMEOUT)
         return urllib2.urlopen(*args, timeout=URL_TIMEOUT, **kwargs)
     except Exception as e:
       if attempt == max_attempts:
