@@ -142,9 +142,9 @@ class GlobalConfig(BaseConfig):
         
         if maven_settings_file:
             logger.info("Maven settings file is overridden: %s", maven_settings_file)
-        if not os.path.isfile(maven_settings_file):
-            raise Exception("Config key %s value %s does not exist!" \
-                            % (maven_settings_file_key, maven_settings_file))
+            if not os.path.isfile(maven_settings_file):
+                raise Exception("Config key %s value %s does not exist!" \
+                                % (maven_settings_file_key, maven_settings_file))
 
 
 class ConfigRunner:
@@ -430,7 +430,7 @@ class TestRunner:
                             maven_flags = maven_flags,
                             maven_repo = maven_repo,
                             maven_settings_file = self.config.maven_settings_file,
-                            verbose = self.args.verbose,)
+                            verbose = self.args.verbose)
         # Enumerate tests and package test dependencies
         i.package()
         # Generate per-test task descriptions
