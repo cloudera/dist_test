@@ -92,6 +92,7 @@ The `grind config` command lets you display your current configuration, or gener
 * `isolate_path`: Path to the isolate binary, this is used to generate the isolate task descriptions
 * `grind_temp_dir`: Where grind will keep per-invocation data. This should be on the same hard disk as the `grind_cache_dir` to enable hardlinking.
 * `grind_cache_dir`: Where grind will cached per-project dependency sets. This greatly speeds up repeated grind invocations. This should be on the same hard disk as the `grind_cache_dir` to enable hardlinking.
+* `maven_settings_file`: Path where maven settings.xml file is located. If not specified, a default settings.xml will be generated.
 
 Running `grind config` will print your current config settings.
 

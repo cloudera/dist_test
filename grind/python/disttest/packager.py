@@ -194,7 +194,8 @@ class Packager:
 
     def __init__(self, maven_project, output_root,
                  cache_dir=None, extra_deps=None, ignore=None,
-                 maven_flags=None, maven_repo=None, verbose=False):
+                 maven_flags=None, maven_repo=None, maven_settings_file=None,
+                 verbose=False):
         self.__maven_project = maven_project
         self.__project_root = maven_project.project_root
         self.__output_root = output_root
@@ -218,6 +219,7 @@ class Packager:
         self.__maven_flags = ""
         if maven_flags is not None:
             self.__maven_flags = maven_flags
+        self.__maven_settings_file = maven_settings_file
 
         self.__verbose = verbose
 
@@ -338,12 +340,17 @@ class Packager:
         env_mvn = env_mvn + " " + self.__maven_flags
 
         cached_m2_repo = os.path.join(self.__cached_project_root, Packager._MAVEN_REL_ROOT)
-        settings_xml = os.path.join(self.__cached_project_root, "settings.xml")
 
         # copy-dependencies
         copy_deps_flags = ""
         if self.__maven_repo is not None:
             copy_deps_flags += "-Dmaven.repo.local=%s" % self.__maven_repo
+
+        if self.__maven_settings_file is None or not self.__maven_settings_file:
+            settings_xml = os.path.join(self.__cached_project_root, "settings.xml")
+        else:
+            settings_xml = self.__maven_settings_file
+        logger.info("Using %s as maven settings file", settings_xml)
 
         quiet_flag = "-q"
         if self.__verbose:
