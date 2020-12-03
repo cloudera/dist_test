@@ -204,15 +204,19 @@ class Slave(object):
     file_path.make_tree_writeable(test_dir)
     return json.load(file(isolated_path))
 
-  def download_task_files_with_retries(self, *args, **kwargs):
+  def download_task_files_with_retries(self, task, test_dir):
     """ Calls download_task_files(...) with automatic retries on failure """
     for rem_attempts in reversed(xrange(NUM_DOWNLOAD_ATTEMPTS_PER_TASK)):
       try:
-        return self.download_task_files(*args, **kwargs)
+        return self.download_task_files(task, test_dir)
       except:
         LOG.warning("failed to download task files. %d tries remaining" % rem_attempts, exc_info=True)
         if rem_attempts == 0:
           raise
+        # Recreate the target directory since some files may have been downloaded
+        # in the first attempt.
+        shutil.rmtree(test_dir)
+        os.makedirs(test_dir)
         time.sleep(5)
 
   def run_task(self, task):
