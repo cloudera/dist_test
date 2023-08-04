@@ -149,7 +149,7 @@ def do_watch_results(job_id):
       return retcode
 
     # Sleep until next interval
-    time.sleep(0.5)
+    time.sleep(5)
 
 def save_last_job_id(job_id):
   with file(LAST_JOB_PATH, "w") as f:
